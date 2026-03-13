@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "alphazeroplay"
+version = "0.1.0"
+description = ""
+authors = ["hbu90 <76783951+hbu90@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+numpy = "<2"
+torch = "2.5.0"
+ptan = "^0.8.1"
+tensorboardx = "^2.6.4"
+tqdm = "^4.67.3"
+pytest = "^9.0.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
