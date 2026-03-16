@@ -13,6 +13,10 @@ ptan = "^0.8.1"
 tensorboardx = "^2.6.4"
 tqdm = "^4.67.3"
 pytest = "^9.0.2"
+tensorboard = "^2.20.0"
+pygame = "^2.6.1"
+charset-normalizer = "^3.4.5"
+setuptools = "^82.0.1"
 
 
 [build-system]
