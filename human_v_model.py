@@ -1,120 +1,280 @@
-#!/usr/bin/env python3
-import argparse
+import pygame
+import sys
 import numpy as np
 import torch
+from tkinter import filedialog, Tk
 
-from lib import game, model, mcts
+from lib import game_quixo, model_quixo
 
-MCTS_SEARCHES = 50
-MCTS_BATCH_SIZE = 8
+pygame.init()
 
+WIDTH = 700
+HEIGHT = 750
+CELL = 100
+BOARD_SIZE = 5
+MARGIN = 100
 
-def print_board(state_int):
-    board = game.render(state_int)
+WHITE = (245,245,245)
+BLACK = (30,30,30)
+BLUE = (120,170,255)
+GREEN = (120,220,120)
+RED = (220,120,120)
+GRAY = (200,200,200)
 
-    # Adjust symbols to match what render() actually returns
-    SYMBOLS = {
-        ' ': "·",   # empty
-        0: "🔴",    # one player
-        1: "🟡",    # other player
-    }
+screen = pygame.display.set_mode((WIDTH,HEIGHT))
+pygame.display.set_caption("Quixo RL")
 
-    print()
-    print("  0   1   2   3   4   5   6")
-    print("┌───┬───┬───┬───┬───┬───┬───┐")
-
-    for row in board:
-        print("│", end="")
-        for cell in row:
-            # Convert string digits to int if needed
-            if isinstance(cell, str) and cell.isdigit():
-                cell = int(cell)
-            print(f" {SYMBOLS[cell]} │", end="")
-        print()
-        print("├───┼───┼───┼───┼───┼───┼───┤")
-
-    print("└───┴───┴───┴───┴───┴───┴───┘")
-    print()
+font = pygame.font.SysFont(None,48)
+small_font = pygame.font.SysFont(None,30)
 
 
-def human_move(state_int):
-    legal = game.possible_moves(state_int)
-    print("Legal moves:", legal)
+class QuixoApp:
 
-    while True:
-        try:
-            move = int(input("Your move: "))
-            if move in legal:
-                return move
-            print("Invalid move.")
-        except ValueError:
-            print("Enter a column number.")
+    def __init__(self):
 
+        self.state = game_quixo.encode_board(game_quixo.INITIAL_STATE)
+        self.player = 1
+        self.net = None
 
-def model_move(state_int, player, net, device):
-    mcts_store = mcts.MCTS()
+        self.selected = None
+        self.cube_actions = []
 
-    # run MCTS simulations
-    mcts_store.search_batch(
-        count=MCTS_SEARCHES,
-        batch_size=MCTS_BATCH_SIZE,
-        state_int=state_int,
-        player=player,
-        net=net,
-        device=device
-    )
+        self.message = "Load model (L) and choose first player (1 or 2)"
 
-    probs, _ = mcts_store.get_policy_value(state_int, tau=0)
-    action = int(np.argmax(probs))
-    return action
+    # --------------------------
+    # MODEL LOADING
+    # --------------------------
 
+    def load_model(self):
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("model", help="Path to trained model")
-    parser.add_argument("--cuda", action="store_true")
-    parser.add_argument("--human-first", action="store_true")
-    args = parser.parse_args()
+        Tk().withdraw()
 
-    device = torch.device("cuda" if args.cuda else "cpu")
+        path = filedialog.askopenfilename(filetypes=[("Model","*.dat")])
 
-    # load trained network
-    net = model.Net(model.OBS_SHAPE, game.GAME_COLS)
-    net.load_state_dict(torch.load(args.model, map_location=device))
-    net.to(device)
-    net.eval()
+        if not path:
+            return
 
-    state = game.INITIAL_STATE
-    current_player = game.PLAYER_BLACK if args.human_first else game.PLAYER_WHITE
-    human_player = current_player
+        net = model_quixo.Net(model_quixo.OBS_SHAPE, game_quixo.N_ACTIONS)
+        net.load_state_dict(torch.load(path,map_location="cpu"))
+        net.eval()
 
-    print("Game start!")
-    print("You are player", human_player)
-    print_board(state)
+        self.net = net
 
-    while True:
-        if current_player == human_player:
-            action = human_move(state)
-        else:
-            print("Model is thinking...")
-            action = model_move(state, current_player, net, device)
+        self.message = "Model loaded!"
 
-        state, won = game.move(state, action, current_player)
-        print_board(state)
+    # --------------------------
+    # DRAW BOARD
+    # --------------------------
+
+    def draw(self):
+
+        screen.fill(WHITE)
+
+        board = game_quixo.decode_board(self.state)
+
+        # draw board cells
+        for r in range(BOARD_SIZE):
+            for c in range(BOARD_SIZE):
+
+                x = MARGIN + c*CELL
+                y = MARGIN + r*CELL
+
+                rect = pygame.Rect(x,y,CELL,CELL)
+
+                color = GRAY if (r,c)==self.selected else BLACK
+
+                pygame.draw.rect(screen,color,rect,2)
+
+                val = board[r][c]
+
+                if val != 0:
+
+                    text = "X" if val==1 else "O"
+
+                    label = font.render(text,True,BLACK)
+
+                    screen.blit(label,(x+35,y+30))
+
+        # highlight legal cubes
+        legal = game_quixo.possible_moves(self.state,self.player)
+
+        legal_cubes = set()
+
+        for a in legal:
+            r,c,_ = game_quixo.decode_action(a)
+            legal_cubes.add((r,c))
+
+        for r,c in legal_cubes:
+
+            x = MARGIN + c*CELL
+            y = MARGIN + r*CELL
+
+            pygame.draw.rect(screen,GREEN,(x,y,CELL,CELL),4)
+
+        # draw message
+        msg = small_font.render(self.message,True,BLACK)
+        screen.blit(msg,(20,20))
+
+        pygame.display.flip()
+
+    # --------------------------
+    # HUMAN MOVE
+    # --------------------------
+
+    def select_cube(self,r,c):
+
+        legal = game_quixo.possible_moves(self.state,self.player)
+
+        cube_actions = [
+            a for a in legal
+            if game_quixo.decode_action(a)[0:2]==(r,c)
+        ]
+
+        if not cube_actions:
+            return
+
+        self.selected = (r,c)
+        self.cube_actions = cube_actions
+
+        self.message = "Use arrow keys to push"
+
+    # --------------------------
+    # PUSH DIRECTION
+    # --------------------------
+
+    def push_direction(self,key):
+
+        if self.selected is None:
+            return
+
+        direction_map = {
+            pygame.K_UP:"UP",
+            pygame.K_DOWN:"DOWN",
+            pygame.K_LEFT:"LEFT",
+            pygame.K_RIGHT:"RIGHT"
+        }
+
+        if key not in direction_map:
+            return
+
+        direction = direction_map[key]
+
+        for action in self.cube_actions:
+
+            r,c,d = game_quixo.decode_action(action)
+
+            if d == direction:
+
+                self.apply_move(action)
+                return
+
+    # --------------------------
+    # APPLY MOVE
+    # --------------------------
+
+    def apply_move(self,action):
+
+        self.state,won = game_quixo.move(self.state,action,self.player)
 
         if won:
-            if current_player == human_player:
-                print("You win 🎉")
-            else:
-                print("Model wins 🤖")
-            break
+            self.message = "Player wins!"
+            return
 
-        if len(game.possible_moves(state)) == 0:
-            print("Draw!")
-            break
+        self.player *= -1
+        self.selected = None
 
-        current_player = 1 - current_player
+        pygame.time.wait(300)
+
+        self.agent_move()
+
+    # --------------------------
+    # AGENT MOVE
+    # --------------------------
+
+    def agent_move(self):
+
+        if self.net is None:
+            return
+
+        self.message = "Agent thinking..."
+
+        pygame.display.flip()
+
+        board = game_quixo.decode_board(self.state)
+
+        batch = model_quixo.state_lists_to_batch([board],[self.player],"cpu")
+
+        logits,_ = self.net(batch)
+
+        probs = torch.softmax(logits,dim=1).detach().numpy()[0]
+
+        legal = game_quixo.possible_moves(self.state,self.player)
+
+        mask = np.zeros(game_quixo.N_ACTIONS)
+        mask[legal] = 1
+
+        probs *= mask
+        probs /= probs.sum()
+
+        action = np.argmax(probs)
+
+        self.state,won = game_quixo.move(self.state,action,self.player)
+
+        if won:
+            self.message = "Agent wins!"
+            return
+
+        self.player *= -1
+        self.message = "Your turn"
+
+    # --------------------------
+    # MOUSE CLICK
+    # --------------------------
+
+    def click(self,pos):
+
+        x,y = pos
+
+        c = (x-MARGIN)//CELL
+        r = (y-MARGIN)//CELL
+
+        if r<0 or r>=5 or c<0 or c>=5:
+            return
+
+        self.select_cube(r,c)
 
 
-if __name__ == "__main__":
-    main()
+app = QuixoApp()
+
+clock = pygame.time.Clock()
+
+while True:
+
+    for event in pygame.event.get():
+
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            app.click(pygame.mouse.get_pos())
+
+        if event.type == pygame.KEYDOWN:
+
+            if event.key == pygame.K_l:
+                app.load_model()
+
+            if event.key == pygame.K_1:
+                app.player = 1
+                app.message = "You start"
+
+            if event.key == pygame.K_2:
+                app.player = -1
+                app.message = "Agent starts"
+                app.agent_move()
+
+            app.push_direction(event.key)
+
+    app.draw()
+
+    clock.tick(60)
