@@ -16,7 +16,7 @@ pytest = "^9.0.2"
 tensorboard = "^2.20.0"
 pygame = "^2.6.1"
 charset-normalizer = "^3.4.5"
-setuptools = "^82.0.1"
+setuptools = "68.2.2"
 
 
 [build-system]
