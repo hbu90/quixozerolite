@@ -28,7 +28,6 @@ small_font = pygame.font.SysFont(None, 30)
 
 
 class QuixoApp:
-
     def __init__(self):
         self.reset()
 
@@ -65,7 +64,6 @@ class QuixoApp:
         # draw board
         for r in range(BOARD_SIZE):
             for c in range(BOARD_SIZE):
-
                 x = MARGIN + c * CELL
                 y = MARGIN + r * CELL
 
@@ -123,10 +121,9 @@ class QuixoApp:
         legal = game_quixo.possible_moves(self.state, self.player)
 
         cube_actions = [
-            a for a in legal
-            if game_quixo.BORDER_SQUARES[
-                   game_quixo.ACTION_MAP[a][0]
-               ] == (r, c)
+            a
+            for a in legal
+            if game_quixo.BORDER_SQUARES[game_quixo.ACTION_MAP[a][0]] == (r, c)
         ]
 
         if not cube_actions:
@@ -144,7 +141,7 @@ class QuixoApp:
             pygame.K_UP: "UP",
             pygame.K_DOWN: "DOWN",
             pygame.K_LEFT: "LEFT",
-            pygame.K_RIGHT: "RIGHT"
+            pygame.K_RIGHT: "RIGHT",
         }
 
         if key not in direction_map:
@@ -190,8 +187,7 @@ class QuixoApp:
         opponent = (board_np == -self.player).astype(np.float32)
 
         batch = torch.tensor(
-            np.stack([current, opponent]),
-            dtype=torch.float32
+            np.stack([current, opponent]), dtype=torch.float32
         ).unsqueeze(0)
 
         with torch.inference_mode():
@@ -245,9 +241,7 @@ app = QuixoApp()
 clock = pygame.time.Clock()
 
 while True:
-
     for event in pygame.event.get():
-
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
@@ -256,7 +250,6 @@ while True:
             app.click(pygame.mouse.get_pos())
 
         if event.type == pygame.KEYDOWN:
-
             if event.key == pygame.K_l:
                 app.load_model()
 

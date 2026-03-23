@@ -5,21 +5,32 @@ PLAYER_X = 1
 PLAYER_O = -1
 
 BORDER_SQUARES = [
-    (0, 0), (0, 1), (0, 2), (0, 3), (0, 4),
-    (1, 0), (1, 4),
-    (2, 0), (2, 4),
-    (3, 0), (3, 4),
-    (4, 0), (4, 1), (4, 2), (4, 3), (4, 4)
+    (0, 0),
+    (0, 1),
+    (0, 2),
+    (0, 3),
+    (0, 4),
+    (1, 0),
+    (1, 4),
+    (2, 0),
+    (2, 4),
+    (3, 0),
+    (3, 4),
+    (4, 0),
+    (4, 1),
+    (4, 2),
+    (4, 3),
+    (4, 4),
 ]
 
 DIRECTIONS = ["UP", "DOWN", "LEFT", "RIGHT"]
 
 INITIAL_STATE = [
-  [0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
 ]
 
 
@@ -124,8 +135,7 @@ def check_valid(state, player, action_idx):
 
 
 def move(state_int, action_idx, player):
-    """
-    """
+    """ """
     state = decode_board(state_int)
     if check_valid(state, player, action_idx):
         border_idx, direction = ACTION_MAP[action_idx]
@@ -162,11 +172,8 @@ def move(state_int, action_idx, player):
 
 
 def possible_moves(state_int, player):
-    """
-    """
+    """ """
     state = decode_board(state_int)
     return [
-        idx
-        for idx, action in enumerate(ACTION_MAP)
-        if check_valid(state, player, idx)
+        idx for idx, action in enumerate(ACTION_MAP) if check_valid(state, player, idx)
     ]

@@ -1,8 +1,15 @@
 import pytest
 import numpy as np
 from lib.game_quixo import (
-    encode_board, decode_board, check_won, check_valid, move, possible_moves,
-    INITIAL_STATE, ACTION_MAP, PLAYER_X, PLAYER_O
+    encode_board,
+    decode_board,
+    check_won,
+    check_valid,
+    move,
+    possible_moves,
+    INITIAL_STATE,
+    ACTION_MAP,
+    PLAYER_X,
 )
 
 
@@ -42,7 +49,7 @@ def test_check_won_diagonal():
         board[i][i] = 1
     assert check_won(board) == 1
     for i in range(5):
-        board[i][4-i] = -1
+        board[i][4 - i] = -1
     assert check_won(board) == -1
 
 
