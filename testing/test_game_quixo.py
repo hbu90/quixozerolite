@@ -57,7 +57,7 @@ def test_check_valid_and_possible_moves():
     board_int = encode_board(INITIAL_STATE)
     moves = possible_moves(board_int, PLAYER_X)
     board = decode_board(board_int)
-    assert all(check_valid(board, PLAYER_X, m) for m in moves)
+    assert all(check_valid(board, m, PLAYER_X) for m in moves)
     assert len(moves) > 0
 
 
@@ -74,4 +74,4 @@ def test_move_invalid_raises():
     board = np.array(INITIAL_STATE)
     invalid_idx = len(ACTION_MAP)
     with pytest.raises(IndexError):
-        check_valid(board, PLAYER_X, invalid_idx)
+        check_valid(board, invalid_idx, PLAYER_X)

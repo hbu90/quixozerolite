@@ -1,10 +1,13 @@
 import numpy as np
+from typing import List
+from numpy.typing import NDArray
 
 SIZE = 5
 PLAYER_X = 1
 PLAYER_O = -1
 
-BORDER_SQUARES = [
+# TO-DO: Generalise from 5 or stick to it?
+BORDER_PIECES = [
     (0, 0),
     (0, 1),
     (0, 2),
@@ -25,16 +28,31 @@ BORDER_SQUARES = [
 
 DIRECTIONS = ["UP", "DOWN", "LEFT", "RIGHT"]
 
-INITIAL_STATE = [
-    [0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0],
-]
+# TO-DO: Generalise from 5 or stick to it?
+INITIAL_STATE = np.asarray(
+    [
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+    ],
+    dtype=np.int8,
+)
 
 
-def legal_directions(row, col, size=5):
+def legal_directions(row: int, col: int, size: int = 5) -> List[str]:
+    """
+    Create a list of legal move directions for a Quixo border pieces.
+
+    Args:
+        row (): Row index of the border piece.
+        col (): Column index of the border piece.
+        size (): Size of the board (n x n). Defaults to 5, as per standard Quixo board.
+
+    Returns:
+        list: List of valid directions that can be taken.
+    """
     dirs = []
 
     if row != 0:
@@ -49,35 +67,45 @@ def legal_directions(row, col, size=5):
     return dirs
 
 
+# Create list of all possible actions for border pieces - 44 in total
 ACTION_MAP = []
-for idx, (row, col) in enumerate(BORDER_SQUARES):
+for idx, (row, col) in enumerate(BORDER_PIECES):
     for dir in legal_directions(row, col):
         ACTION_MAP.append((idx, dir))
 
 N_ACTIONS = len(ACTION_MAP)
 
 
-def encode_board(board):
+def encode_board(board: NDArray[np.int8]) -> int:
     """
     Encodes a 5x5 Quixo board into a unique integer.
-    board: array-like shape (5,5) with values {-1, 0, 1}
+
+    Args:
+        board (NDArray[np.int8]): Array that represents a 5x5 Quixo board.
+    Returns:
+        int: Unique integer representing a Quixo board state.
     """
-    board = np.asarray(board, dtype=np.int8)
     assert board.shape == (5, 5)
 
-    # Map {-1,0,1} → {0,1,2}
-    trits = board + 1
+    # Map board to base-3 version {-1,0,1} → {0,1,2}
+    ternary_board = board + 1
 
     value = 0
-    for t in trits.flatten():
+    for t in ternary_board.flatten():
         value = value * 3 + int(t)
 
     return value
 
 
-def decode_board(value):
+# TO-DO: Check numpy versus list outputs
+def decode_board(value: int) -> NDArray[np.int8]:
     """
     Decodes an integer back into a 5x5 Quixo board.
+
+    Args:
+        value (int): Encoded integer that represents a unique Quixo 5x5 board state.
+    Returns:
+        NDArray[np.int8]: Array that represents a 5x5 Quixo board.
     """
     cells = []
     for _ in range(25):
@@ -88,9 +116,14 @@ def decode_board(value):
     return np.array(cells, dtype=np.int8).reshape(5, 5)
 
 
-def check_won(state):
+def check_won(state: NDArray[np.int8]) -> int:
     """
     Checks if any of players have 5 in a row of their symbol, either horizontally, diagonally, or vertically.
+
+    Args:
+        state (NDArray[np.int8]): Array that represents a 5x5 Quixo board.
+    Returns:
+        int: Integer representing either a winner (1 or -1 for different players) or 0 for no win found.
     """
     for r in range(SIZE):
         row_sum = sum(state[r])
@@ -121,9 +154,21 @@ def check_won(state):
     return 0
 
 
-def check_valid(state, player, action_idx):
+def check_valid(state: NDArray[np.int8], action_idx: int, player: int) -> bool:
+    """
+    Checks if an action is valid for a player in a given board state.
+
+    Args:
+        state (NDArray[np.int8]): Array that represents a 5x5 Quixo board.
+        action_idx (int): Index of the action.
+        player (int): Integer representing the player (1 or -1).
+    Returns:
+        bool: Boolean whether the given action is valid.
+    """
+    assert player in [PLAYER_O, PLAYER_X]
+
     border_idx, direction = ACTION_MAP[action_idx]
-    row, col = BORDER_SQUARES[border_idx]
+    row, col = BORDER_PIECES[border_idx]
 
     if state[row][col] not in (0, player):
         return False
@@ -134,12 +179,24 @@ def check_valid(state, player, action_idx):
     return True
 
 
-def move(state_int, action_idx, player):
-    """ """
+def move(state_int: int, action_idx: int, player: int) -> tuple[int, int]:
+    """
+    Make a move on the 5x5 Quixo board and output the new board state and whether either player has won.
+
+    Args:
+        state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
+        action_idx (int): Index of the action.
+        player (int): Integer representing the player (1 or -1).
+    Returns:
+        int: Encoded integer that represents a unique Quixo 5x5 board state.
+        int: Indicator whether either player has won (-1 or 1) or no winner with current state (0).
+    """
+    assert player in [PLAYER_O, PLAYER_X]
+
     state = decode_board(state_int)
-    if check_valid(state, player, action_idx):
+    if check_valid(state, action_idx, player):
         border_idx, direction = ACTION_MAP[action_idx]
-        row, col = BORDER_SQUARES[border_idx]
+        row, col = BORDER_PIECES[border_idx]
 
         state_new = state.copy()
         if direction == "LEFT":
@@ -171,9 +228,19 @@ def move(state_int, action_idx, player):
         raise ValueError()
 
 
-def possible_moves(state_int, player):
-    """ """
+def possible_moves(state_int: int, player: int) -> list:
+    """
+    Output all possible moves for a player in a given board state.
+
+    Args:
+        state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
+        player (int): Integer representing the player (1 or -1).
+    Returns:
+        list: List of action indices that are valid for the given player.
+    """
+    assert player in [PLAYER_O, PLAYER_X]
+
     state = decode_board(state_int)
     return [
-        idx for idx, action in enumerate(ACTION_MAP) if check_valid(state, player, idx)
+        idx for idx, action in enumerate(ACTION_MAP) if check_valid(state, idx, player)
     ]
