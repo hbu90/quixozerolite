@@ -49,7 +49,6 @@ def legal_directions(row: int, col: int, size: int = 5) -> List[str]:
         row (): Row index of the border piece.
         col (): Column index of the border piece.
         size (): Size of the board (n x n). Defaults to 5, as per standard Quixo board.
-
     Returns:
         list: List of valid directions that can be taken.
     """

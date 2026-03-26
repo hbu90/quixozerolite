@@ -114,8 +114,8 @@ def play_game(
     net1,
     net2,
     steps_before_tau_0,
-    mcts_searches,
-    mcts_batch_size,
+    n_iterations,
+    n_simulations,
     net1_plays_first=None,
     device="cpu",
 ):
@@ -125,8 +125,8 @@ def play_game(
     assert isinstance(net1, Net)
     assert isinstance(net2, Net)
     assert isinstance(steps_before_tau_0, int) and steps_before_tau_0 >= 0
-    assert isinstance(mcts_searches, int) and mcts_searches > 0
-    assert isinstance(mcts_batch_size, int) and mcts_batch_size > 0
+    assert isinstance(n_iterations, int) and n_iterations > 0
+    assert isinstance(n_simulations, int) and n_simulations > 0
 
     if mcts_stores is None:
         mcts_stores = [mcts_quixo.MCTS(), mcts_quixo.MCTS()]
@@ -151,9 +151,9 @@ def play_game(
         print(
             f"Move number is {step} and current_player is {cur_player} and current_player_idx is {cur_player_idx}"
         )
-        mcts_stores[cur_player_idx].search_batch(
-            mcts_searches,
-            mcts_batch_size,
+        mcts_stores[cur_player_idx].run_mcts(
+            n_iterations,
+            n_simulations,
             state,
             cur_player,
             nets[cur_player_idx],

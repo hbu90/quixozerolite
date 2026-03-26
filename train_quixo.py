@@ -16,8 +16,8 @@ import torch.nn.functional as F
 
 
 PLAY_EPISODES = 2  # 25
-MCTS_SEARCHES = 3  # 10
-MCTS_BATCH_SIZE = 2  # 4 #8
+MCTS_ITERATIONS = 3  # 10
+MCTS_SIMULATION_SIZE = 2  # 4 #8
 REPLAY_BUFFER = 200  # 5000 # 30000
 LEARNING_RATE = 0.001
 BATCH_SIZE = 16  # 256
@@ -45,8 +45,8 @@ def evaluate(net1, net2, rounds, device="cpu"):
             net1=net1,
             net2=net2,
             steps_before_tau_0=0,
-            mcts_searches=20,
-            mcts_batch_size=16,
+            n_iterations=20,
+            n_simulations=16,
             device=device,
         )
         if r < -0.5:
@@ -98,8 +98,8 @@ if __name__ == "__main__":
                     best_net.target_model,
                     best_net.target_model,
                     steps_before_tau_0=STEPS_BEFORE_TAU_0,
-                    mcts_searches=MCTS_SEARCHES,
-                    mcts_batch_size=MCTS_BATCH_SIZE,
+                    n_iterations=MCTS_ITERATIONS,
+                    n_simulations=MCTS_SIMULATION_SIZE,
                     device=device,
                 )
                 game_steps += steps

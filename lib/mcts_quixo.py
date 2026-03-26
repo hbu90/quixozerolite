@@ -1,21 +1,27 @@
-"""
-Monte-Carlo Tree Search
-"""
-
 import math as m
+from typing import Any
+
 import numpy as np
 
 from lib import game_quixo, model_quixo
 
-import torch.nn.functional as F
+import torch.nn.functional as functional
+import torch.nn as nn
 
 
 class MCTS:
     """
-    Class keeps statistics for every state encountered during the search
+    Monte-Carlo Tree Search class that keeps statistics for every state encountered during the search.
+
+    Attributes:
+        c_puct (float): Exploration constant.
+        visit_count (dict): Dictionary to store visit counts.
+        value (dict): Dictionary to store values.
+        value_avg (dict): Dictionary to store average values.
+        probs (dict): Dictionary to store probabilities.
     """
 
-    def __init__(self, c_puct=1.0):
+    def __init__(self, c_puct: float = 1.0):
         self.c_puct = c_puct
         self.visit_count = {}
         self.value = {}
@@ -31,11 +37,25 @@ class MCTS:
     def __len__(self):
         return len(self.value)
 
-    def is_leaf(self, state_int):
+    def is_leaf(self, state_int: int) -> bool:
         return state_int not in self.probs
 
-    def find_leaf(self, state_int, player):
-        """ """
+    def find_leaf(self, state_int: int, player: int) -> tuple[float | None, int, int | Any, list[int], list[int]]:
+        """
+        Traverse the tree from the root until a leaf node is found.
+
+        Args:
+            state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
+            player (int): Integer representing the player (1 or -1).
+        Returns:
+            float: Value of the game outcome for the current player at the leaf node.
+            int: Encoded integer that represents a unique Quixo 5x5 board state.
+            int: Integer representing the player (1 or -1).
+            list: List of visited states.
+            list: List of implemented actions.
+        """
+        assert player in [game_quixo.PLAYER_O, game_quixo.PLAYER_X]
+
         states = []
         actions = []
         cur_state = state_int
@@ -43,8 +63,10 @@ class MCTS:
         value = None
         visited = set()
         print("Find leaf")
+        # Keep searching until a leaf node is found
         while not self.is_leaf(cur_state):
             print(f"Current state is : {cur_state}")
+            # If we revisit the same state, then treat it as a draw and break early
             if (cur_state, cur_player) in visited:
                 value = 0.0
                 break
@@ -57,12 +79,13 @@ class MCTS:
             probs = self.probs[cur_state]
             values_avg = self.value_avg[cur_state]
 
-            # choose action to take, in the root node add the Dirichlet noise to the probs
+            # Only apply this random noise to the probability at the root node
             if cur_state == state_int:
                 noises = np.random.dirichlet([0.03] * game_quixo.N_ACTIONS)
                 probs = [
                     0.75 * prob + 0.25 * noise for prob, noise in zip(probs, noises)
                 ]
+            # Calculate UCB score
             score = [
                 value + self.c_puct * prob * total_sqrt / (1 + count)
                 for value, prob, count in zip(values_avg, probs, counts)
@@ -77,41 +100,64 @@ class MCTS:
             action = int(np.argmax(score))
             print(f"MCTS search action:{action}")
             actions.append(action)
+            # Transition to the next state using best action
             cur_state, won = game_quixo.move(cur_state, action, cur_player)
             print(
                 f"New MCTS cur_state: {cur_state}, won: {won}, cur_player: {cur_player}"
             )
+            # TO-DO: Fix the won value
             if won:
-                # if somebody won the game, the value of the final state is -1 (as it is on opponent's turn)
                 value = -1.0
             cur_player = cur_player * -1
-            # check for the draw
             moves_count = len(game_quixo.possible_moves(cur_state, cur_player))
+            # If no moves left, then it is a draw
             if value is None and moves_count == 0:
                 value = 0.0
 
         return value, cur_state, cur_player, states, actions
 
-    def search_batch(
-        self, mcts_searches, batch_size, state_int, player, net, device="cpu"
+    def run_mcts(
+        self, n_iterations: int, n_simulations: int, state_int: int, player: int, net: nn.Module, device: str = "cpu"
     ):
-        print(f"Initial state is {state_int}")
-        for step in range(mcts_searches):
-            print(f"MCTS search number is {step}")
-
-            self.search_minibatch(batch_size, state_int, player, net, device)
-
-    def search_minibatch(self, count, state_int, player, net, device="cpu"):
         """
-        Perform several MCTS searches.
+        Run MCTS simulations from a given game state.
+
+        Args:
+            n_iterations (int):
+            n_simulations (int): Number of MCTS simulations to batch together.
+            state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
+            player (int): Integer representing the player (1 or -1).
+            net (nn.Module): Neural network that predicts policy and value.
+            device (str): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
+        """
+        print(f"Initial state is {state_int}")
+        for step in range(n_iterations):
+            print(f"MCTS batch iteration number is {step}")
+
+            self.mcts_simulations_batch(n_simulations, state_int, player, net, device)
+
+    def mcts_simulations_batch(self, n_simulations: int, state_int: int, player: int, net: nn.Module,
+                               device: str = "cpu"):
+        """
+        Perform multiple MCTS simulations per call.
+
+        Args:
+            n_simulations (int): Number of MCTS simulations to batch together.
+            state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
+            player (int): Integer representing the player (1 or -1).
+            net (nn.Module): Neural network that predicts policy and value.
+            device (str): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
         """
         backup_queue = []
-        expand_states = []
+        expand_states = []  # States to be evaluated by neural network
         expand_players = []
         expand_queue = []
         planned = set()
-        for step in range(count):
-            print(f"MCTS mini-batch number is {step}")
+
+        # Find leaf nodes for multiple MCTS simulations and store for backup, expand, or discard if already seen leaf
+        # state to be expanded
+        for sim_idx in range(n_simulations):
+            print(f"MCTS simulation number is {sim_idx }")
             value, leaf_state, leaf_player, states, actions = self.find_leaf(
                 state_int, player
             )
@@ -126,17 +172,17 @@ class MCTS:
                     expand_players.append(leaf_player)
                     expand_queue.append((leaf_state, states, actions))
 
-        # do expansion of nodes
+        # Expand nodes using neural network
         if expand_queue:
             batch_v = model_quixo.state_lists_to_batch(
                 expand_states, expand_players, device
             )
             logits_v, values_v = net(batch_v)
-            probs_v = F.softmax(logits_v, dim=1)
+            probs_v = functional.softmax(logits_v, dim=1)
             values = values_v.data.cpu().numpy()[:, 0]
             probs = probs_v.data.cpu().numpy()
 
-            # create the nodes
+            # Create nodes
             for (leaf_state, states, actions), value, prob in zip(
                 expand_queue, values, probs
             ):
@@ -144,6 +190,8 @@ class MCTS:
                 self.value[leaf_state] = [0.0] * game_quixo.N_ACTIONS
                 self.value_avg[leaf_state] = [0.0] * game_quixo.N_ACTIONS
                 # self.probs[leaf_state] = prob
+
+                # TO-DO: Double check not leaf_player
                 legal_moves = game_quixo.possible_moves(leaf_state, player)
                 mask = np.zeros(game_quixo.N_ACTIONS)
                 mask[legal_moves] = 1
@@ -156,9 +204,10 @@ class MCTS:
 
                 backup_queue.append((value, states, actions))
 
-        # perform backup of the searches
+        # Backup of searches
         for value, states, actions in backup_queue:
-            # leaf state is not stored in states and actions, so the value of the leaf will be the value of the opponent
+            # The leaf state is not stored in states and actions,
+            # so the value of the leaf will be the value of the opponent
             cur_value = -value
             for state_int, action in zip(states[::-1], actions[::-1]):
                 self.visit_count[state_int][action] += 1
@@ -168,8 +217,17 @@ class MCTS:
                 )
                 cur_value = -cur_value
 
-    def get_policy_value(self, state_int, tau=1):
-        """ """
+    def get_policy_value(self, state_int: int, tau: int = 1) -> tuple[list[float], float]:
+        """
+        Convert MCTS search statistics at a state into a policy distribution and values for each action.
+
+        Args:
+            state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
+            tau (int): Parameter that controls degree of exploration for returned policy. Defaults to 1.
+        Returns:
+            list[float]: Policy (π(s)) for a given state.
+            float: Values (Q(s,a)) for a given state.
+        """
         counts = self.visit_count[state_int]
         if tau == 0:
             probs = [0.0] * game_quixo.N_ACTIONS
