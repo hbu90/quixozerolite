@@ -141,7 +141,7 @@ if __name__ == "__main__":
                 batch_states_lists = [
                     game_quixo.decode_board(state) for state in batch_states
                 ]
-                states_v = model_quixo.state_lists_to_batch(
+                states_v = model_quixo.states_to_tensor_batch(
                     batch_states_lists, batch_who_moves, device
                 )
 

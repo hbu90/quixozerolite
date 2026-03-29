@@ -1,13 +1,13 @@
 import collections
 import numpy as np
-
+from typing import Optional
 import torch
 import torch.nn as nn
-
+from numpy.typing import NDArray
 from lib import game_quixo, mcts_quixo
 
 
-OBS_SHAPE = (2, game_quixo.SIZE, game_quixo.SIZE)
+OBS_SHAPE = (3, game_quixo.SIZE, game_quixo.SIZE)
 NUM_FILTERS = 64
 
 
@@ -15,6 +15,7 @@ class Net(nn.Module):
     def __init__(self, input_shape, actions_n):
         super(Net, self).__init__()
 
+        # TO-DO: input_shape[0]
         self.conv_in = nn.Sequential(
             nn.Conv2d(input_shape[0], NUM_FILTERS, kernel_size=3, padding=1),
             nn.BatchNorm2d(NUM_FILTERS),
@@ -85,41 +86,80 @@ class Net(nn.Module):
         return pol, val
 
 
-def _encode_list_state(dest_np, state_list, who_move):
-    """ """
+# TO-DO: Look at channels used for AlphaGo Zero for comparison
+def encode_board_for_nn(dest_np: np.ndarray, state: NDArray[np.int8], player: int):
+    """
+    Encode a single board state into an array suitable for our neural network.
+
+    Args:
+        dest_np (np.ndarray): Target array of shape to store the neural network encoded state.
+        state (NDArray[np.int8]): Array that represents a 5x5 Quixo board.
+        player (int): Integer representing the player (1 or -1).
+    """
     assert dest_np.shape == OBS_SHAPE
 
-    for col_idx, col in enumerate(state_list):
+    for col_idx, col in enumerate(state):
         for rev_row_idx, cell in enumerate(col):
             row_idx = game_quixo.SIZE - rev_row_idx - 1
-            if cell == who_move:
+            if cell == player:
                 dest_np[0, row_idx, col_idx] = 1.0
-            else:
+            elif cell == -player:
                 dest_np[1, row_idx, col_idx] = 1.0
+            else:
+                dest_np[2, row_idx, col_idx] = 1.0
 
 
-def state_lists_to_batch(state_lists, who_moves_lists, device="cpu"):
-    """ """
-    assert isinstance(state_lists, list)
-    batch_size = len(state_lists)
+def states_to_tensor_batch(state_list: list, player_list: list, device: str = "cpu") -> torch.Tensor:
+    """
+    Encodes states to shape used in neural network and returns a tensor, in batch form.
+
+    Args:
+        state_list (list): List of states.
+        player_list (list): List of players.
+        device (str): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
+    Returns:
+        torch.Tensor: PyTorch tensor batch of encoded board states.
+    """
+    assert isinstance(state_list, list)
+    batch_size = len(state_list)
     batch = np.zeros((batch_size,) + OBS_SHAPE, dtype=np.float32)
-    for idx, (state, who_move) in enumerate(zip(state_lists, who_moves_lists)):
-        _encode_list_state(batch[idx], state, who_move)
+    for idx, (state, player) in enumerate(zip(state_list, player_list)):
+        encode_board_for_nn(batch[idx], state, player)
     return torch.tensor(batch).to(device)
 
 
 def play_game(
-    mcts_stores,
-    replay_buffer,
-    net1,
-    net2,
-    steps_before_tau_0,
-    n_iterations,
-    n_simulations,
-    net1_plays_first=None,
-    device="cpu",
+    mcts_stores: mcts_quixo.MCTS | None,
+    replay_buffer: collections.deque | None,
+    net1: nn.Module,
+    net2: nn.Module,
+    steps_before_tau_0: int,
+    n_iterations: int,
+    n_simulations: int,
+    net1_plays_first: bool | None = None,
+    device: str = "cpu",
 ):
-    """ """
+    """
+    Simulates a single self-play game between two neural networks using MCTS.
+
+    Args:
+        mcts_stores (mcts_quixo.MCTS | None): Monte-Carlo Tree Search class that keeps statistics for every state
+        encountered during the search.
+        replay_buffer (collections.deque | None): Replay buffer storing (state, player, policy_probs, result) tuples.
+        Can be set as None to disable replay storage.
+        net1 (nn.Module): Neural network that predicts policy and value.
+        net2 (nn.Module): Neural network that predicts policy and value.
+        steps_before_tau_0 (int): Number of moves at the start of the game for which temperature parameter is 1, before
+        switching to zero.
+        n_iterations (int): Number of times MCTS batch of simulations are run.
+        n_simulations (int): Number of MCTS simulations to batch together.
+        net1_plays_first (bool | None): If True, net1 goes first; if False, net2 goes first. If None, the first player
+        is chosen randomly. Defaults to None.
+        device (str): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
+    Returns:
+        int: +1 if net1 wins, -1 if net2 wins, 0 for a draw.
+        int: Total number of moves played in the game.
+    """
     assert isinstance(replay_buffer, (collections.deque, type(None)))
     assert isinstance(mcts_stores, (mcts_quixo.MCTS, type(None), list))
     assert isinstance(net1, Net)

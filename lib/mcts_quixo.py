@@ -123,7 +123,7 @@ class MCTS:
         Run MCTS simulations from a given game state.
 
         Args:
-            n_iterations (int):
+            n_iterations (int): Number of times MCTS batch of simulations are run.
             n_simulations (int): Number of MCTS simulations to batch together.
             state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
             player (int): Integer representing the player (1 or -1).
@@ -174,7 +174,7 @@ class MCTS:
 
         # Expand nodes using neural network
         if expand_queue:
-            batch_v = model_quixo.state_lists_to_batch(
+            batch_v = model_quixo.states_to_tensor_batch(
                 expand_states, expand_players, device
             )
             logits_v, values_v = net(batch_v)
