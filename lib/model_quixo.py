@@ -128,7 +128,7 @@ def states_to_tensor_batch(
 
 
 def play_game(
-    mcts_stores: mcts_quixo.MCTS | None,
+    mcts_stores: mcts_quixo.MCTS | list[mcts_quixo.MCTS] | None,
     replay_buffer: collections.deque | None,
     net1: nn.Module,
     net2: nn.Module,
@@ -142,8 +142,9 @@ def play_game(
     Simulates a single self-play game between two neural networks using MCTS.
 
     Args:
-        mcts_stores (mcts_quixo.MCTS | None): Monte-Carlo Tree Search class that keeps statistics for every state
-        encountered during the search.
+        mcts_stores (mcts_quixo.MCTS | list[mcts_quixo.MCTS] | None): A singular Monte-Carlo Tree Search class or list
+        of Monte-Carlo Tree Search classes that keeps statistics for every state encountered during the search. Can be
+        set as None to create a new instance.
         replay_buffer (collections.deque | None): Replay buffer storing (state, player, policy_probs, result) tuples.
         Can be set as None to disable replay storage.
         net1 (nn.Module): Neural network that predicts policy and value.
