@@ -12,7 +12,7 @@ from tensorboardX import SummaryWriter
 
 import torch
 import torch.optim as optim
-import torch.nn.functional as F
+import torch.nn.functional as functional
 
 
 PLAY_EPISODES = 2  # 25
@@ -150,8 +150,8 @@ if __name__ == "__main__":
                 values_v = torch.FloatTensor(batch_values).to(device)
                 out_logits_v, out_values_v = net(states_v)
 
-                loss_value_v = F.mse_loss(out_values_v.squeeze(-1), values_v)
-                loss_policy_v = -F.log_softmax(out_logits_v, dim=1) * probs_v
+                loss_value_v = functional.mse_loss(out_values_v.squeeze(-1), values_v)
+                loss_policy_v = -functional.log_softmax(out_logits_v, dim=1) * probs_v
                 loss_policy_v = loss_policy_v.sum(dim=1).mean()
 
                 loss_v = loss_policy_v + loss_value_v
