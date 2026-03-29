@@ -40,7 +40,9 @@ class MCTS:
     def is_leaf(self, state_int: int) -> bool:
         return state_int not in self.probs
 
-    def find_leaf(self, state_int: int, player: int) -> tuple[float | None, int, int | Any, list[int], list[int]]:
+    def find_leaf(
+        self, state_int: int, player: int
+    ) -> tuple[float | None, int, int | Any, list[int], list[int]]:
         """
         Traverse the tree from the root until a leaf node is found.
 
@@ -105,9 +107,12 @@ class MCTS:
             print(
                 f"New MCTS cur_state: {cur_state}, won: {won}, cur_player: {cur_player}"
             )
-            # TO-DO: Fix the won value
-            if won:
+            if won == cur_player:
+                value = 1.0
+            elif won == -cur_player:
                 value = -1.0
+            else:
+                value = 0.0
             cur_player = cur_player * -1
             moves_count = len(game_quixo.possible_moves(cur_state, cur_player))
             # If no moves left, then it is a draw
@@ -117,7 +122,13 @@ class MCTS:
         return value, cur_state, cur_player, states, actions
 
     def run_mcts(
-        self, n_iterations: int, n_simulations: int, state_int: int, player: int, net: nn.Module, device: str = "cpu"
+        self,
+        n_iterations: int,
+        n_simulations: int,
+        state_int: int,
+        player: int,
+        net: nn.Module,
+        device: str = "cpu",
     ):
         """
         Run MCTS simulations from a given game state.
@@ -136,8 +147,14 @@ class MCTS:
 
             self.mcts_simulations_batch(n_simulations, state_int, player, net, device)
 
-    def mcts_simulations_batch(self, n_simulations: int, state_int: int, player: int, net: nn.Module,
-                               device: str = "cpu"):
+    def mcts_simulations_batch(
+        self,
+        n_simulations: int,
+        state_int: int,
+        player: int,
+        net: nn.Module,
+        device: str = "cpu",
+    ):
         """
         Perform multiple MCTS simulations per call.
 
@@ -157,7 +174,7 @@ class MCTS:
         # Find leaf nodes for multiple MCTS simulations and store for backup, expand, or discard if already seen leaf
         # state to be expanded
         for sim_idx in range(n_simulations):
-            print(f"MCTS simulation number is {sim_idx }")
+            print(f"MCTS simulation number is {sim_idx}")
             value, leaf_state, leaf_player, states, actions = self.find_leaf(
                 state_int, player
             )
@@ -189,10 +206,8 @@ class MCTS:
                 self.visit_count[leaf_state] = [0] * game_quixo.N_ACTIONS
                 self.value[leaf_state] = [0.0] * game_quixo.N_ACTIONS
                 self.value_avg[leaf_state] = [0.0] * game_quixo.N_ACTIONS
-                # self.probs[leaf_state] = prob
 
-                # TO-DO: Double check not leaf_player
-                legal_moves = game_quixo.possible_moves(leaf_state, player)
+                legal_moves = game_quixo.possible_moves(leaf_state, leaf_player)
                 mask = np.zeros(game_quixo.N_ACTIONS)
                 mask[legal_moves] = 1
                 prob = prob * mask
@@ -217,7 +232,9 @@ class MCTS:
                 )
                 cur_value = -cur_value
 
-    def get_policy_value(self, state_int: int, tau: int = 1) -> tuple[list[float], float]:
+    def get_policy_value(
+        self, state_int: int, tau: int = 1
+    ) -> tuple[list[float], float]:
         """
         Convert MCTS search statistics at a state into a policy distribution and values for each action.
 
