@@ -1,6 +1,5 @@
 import collections
 import numpy as np
-from typing import Optional
 import torch
 import torch.nn as nn
 from numpy.typing import NDArray
@@ -15,7 +14,6 @@ class Net(nn.Module):
     def __init__(self, input_shape, actions_n):
         super(Net, self).__init__()
 
-        # TO-DO: input_shape[0]
         self.conv_in = nn.Sequential(
             nn.Conv2d(input_shape[0], NUM_FILTERS, kernel_size=3, padding=1),
             nn.BatchNorm2d(NUM_FILTERS),
@@ -86,7 +84,6 @@ class Net(nn.Module):
         return pol, val
 
 
-# TO-DO: Look at channels used for AlphaGo Zero for comparison
 def encode_board_for_nn(dest_np: np.ndarray, state: NDArray[np.int8], player: int):
     """
     Encode a single board state into an array suitable for our neural network.
@@ -109,7 +106,9 @@ def encode_board_for_nn(dest_np: np.ndarray, state: NDArray[np.int8], player: in
                 dest_np[2, row_idx, col_idx] = 1.0
 
 
-def states_to_tensor_batch(state_list: list, player_list: list, device: str = "cpu") -> torch.Tensor:
+def states_to_tensor_batch(
+    state_list: list, player_list: list, device: str = "cpu"
+) -> torch.Tensor:
     """
     Encodes states to shape used in neural network and returns a tensor, in batch form.
 

@@ -6,7 +6,6 @@ SIZE = 5
 PLAYER_X = 1
 PLAYER_O = -1
 
-# TO-DO: Generalise from 5 or stick to it?
 BORDER_PIECES = [
     (0, 0),
     (0, 1),
@@ -28,7 +27,6 @@ BORDER_PIECES = [
 
 DIRECTIONS = ["UP", "DOWN", "LEFT", "RIGHT"]
 
-# TO-DO: Generalise from 5 or stick to it?
 INITIAL_STATE = np.asarray(
     [
         [0, 0, 0, 0, 0],
@@ -96,7 +94,6 @@ def encode_board(board: NDArray[np.int8]) -> int:
     return value
 
 
-# TO-DO: Check numpy versus list outputs
 def decode_board(value: int) -> NDArray[np.int8]:
     """
     Decodes an integer back into a 5x5 Quixo board.
