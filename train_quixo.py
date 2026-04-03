@@ -15,23 +15,22 @@ import torch.optim as optim
 import torch.nn.functional as functional
 
 
-PLAY_EPISODES = 10  # 25
-MCTS_ITERATIONS = 10  # 10
-MCTS_SIMULATION_SIZE = 4  # 4 #8
-REPLAY_BUFFER = 2000  # 5000 # 30000
+PLAY_EPISODES = 10
+MCTS_ITERATIONS = 10
+MCTS_SIMULATION_SIZE = 4
+REPLAY_BUFFER = 2000
 LEARNING_RATE = 0.01
-BATCH_SIZE = 32  # 256
-TRAIN_ROUNDS = 3  # 10
-MIN_REPLAY_TO_TRAIN = 200  # 2000 #10000
+BATCH_SIZE = 32
+TRAIN_ROUNDS = 3
+MIN_REPLAY_TO_TRAIN = 200
 
 BEST_NET_WIN_RATIO = 0.55
 
-EVALUATE_EVERY_STEP = 5  # 5 #100
-EVALUATION_ROUNDS = 6  # 2 #20
-STEPS_BEFORE_TAU_0 = 8  # 10
+EVALUATE_EVERY_STEP = 5
+EVALUATION_ROUNDS = 6
+STEPS_BEFORE_TAU_0 = 8
 
-# Add in a line to stop
-MAX_STEPS = 200  # 10
+MAX_STEPS = 200
 
 
 def evaluate(
@@ -93,7 +92,6 @@ if __name__ == "__main__":
 
     with ptan.common.utils.TBMeanTracker(writer, batch_size=10) as tb_tracker:
         while step_idx < MAX_STEPS:
-            # while True:
             t = time.time()
             prev_nodes = len(mcts_store)
             game_steps = 0
