@@ -2,6 +2,7 @@ import math as m
 from typing import Any
 
 import numpy as np
+import torch
 
 from lib import game_quixo, model_quixo
 
@@ -64,10 +65,8 @@ class MCTS:
         cur_player = player
         value = None
         visited = set()
-        print("Find leaf")
         # Keep searching until a leaf node is found
         while not self.is_leaf(cur_state):
-            print(f"Current state is : {cur_state}")
             # If we revisit the same state, then treat it as a draw and break early
             if (cur_state, cur_player) in visited:
                 value = 0.0
@@ -92,21 +91,15 @@ class MCTS:
                 value + self.c_puct * prob * total_sqrt / (1 + count)
                 for value, prob, count in zip(values_avg, probs, counts)
             ]
-            print(f"MCTS score: {score}")
             invalid_actions = set(range(game_quixo.N_ACTIONS)) - set(
                 game_quixo.possible_moves(cur_state, cur_player)
             )
-            print(f"MCTS invalid actions: {invalid_actions}")
             for invalid in invalid_actions:
                 score[invalid] = -np.inf
             action = int(np.argmax(score))
-            print(f"MCTS search action:{action}")
             actions.append(action)
             # Transition to the next state using best action
             cur_state, won = game_quixo.move(cur_state, action, cur_player)
-            print(
-                f"New MCTS cur_state: {cur_state}, won: {won}, cur_player: {cur_player}"
-            )
             if won == cur_player:
                 value = 1.0
             elif won == -cur_player:
@@ -128,7 +121,7 @@ class MCTS:
         state_int: int,
         player: int,
         net: nn.Module,
-        device: str = "cpu",
+        device: torch.device = torch.device("cpu"),
     ):
         """
         Run MCTS simulations from a given game state.
@@ -139,12 +132,9 @@ class MCTS:
             state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
             player (int): Integer representing the player (1 or -1).
             net (nn.Module): Neural network that predicts policy and value.
-            device (str): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
+            device (torch.device): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
         """
-        print(f"Initial state is {state_int}")
         for step in range(n_iterations):
-            print(f"MCTS batch iteration number is {step}")
-
             self.mcts_simulations_batch(n_simulations, state_int, player, net, device)
 
     def mcts_simulations_batch(
@@ -153,7 +143,7 @@ class MCTS:
         state_int: int,
         player: int,
         net: nn.Module,
-        device: str = "cpu",
+        device: torch.device = torch.device("cpu"),
     ):
         """
         Perform multiple MCTS simulations per call.
@@ -163,7 +153,7 @@ class MCTS:
             state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
             player (int): Integer representing the player (1 or -1).
             net (nn.Module): Neural network that predicts policy and value.
-            device (str): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
+            device (torch.device): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
         """
         backup_queue = []
         expand_states = []  # States to be evaluated by neural network
@@ -174,11 +164,9 @@ class MCTS:
         # Find leaf nodes for multiple MCTS simulations and store for backup, expand, or discard if already seen leaf
         # state to be expanded
         for sim_idx in range(n_simulations):
-            print(f"MCTS simulation number is {sim_idx}")
             value, leaf_state, leaf_player, states, actions = self.find_leaf(
                 state_int, player
             )
-            print(f"New leaf state is {leaf_state}")
             if value is not None:
                 backup_queue.append((value, states, actions))
             else:

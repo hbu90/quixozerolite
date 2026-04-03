@@ -15,26 +15,31 @@ import torch.optim as optim
 import torch.nn.functional as functional
 
 
-PLAY_EPISODES = 2  # 25
-MCTS_ITERATIONS = 3  # 10
-MCTS_SIMULATION_SIZE = 2  # 4 #8
-REPLAY_BUFFER = 200  # 5000 # 30000
-LEARNING_RATE = 0.001
-BATCH_SIZE = 16  # 256
-TRAIN_ROUNDS = 1  # 10
-MIN_REPLAY_TO_TRAIN = 2 * BATCH_SIZE  # 2000 #10000
+PLAY_EPISODES = 10  # 25
+MCTS_ITERATIONS = 10  # 10
+MCTS_SIMULATION_SIZE = 4  # 4 #8
+REPLAY_BUFFER = 2000  # 5000 # 30000
+LEARNING_RATE = 0.01
+BATCH_SIZE = 32  # 256
+TRAIN_ROUNDS = 3  # 10
+MIN_REPLAY_TO_TRAIN = 200  # 2000 #10000
 
-BEST_NET_WIN_RATIO = 0.60
+BEST_NET_WIN_RATIO = 0.55
 
-EVALUATE_EVERY_STEP = 2  # 5 #100
-EVALUATION_ROUNDS = 1  # 2 #20
-STEPS_BEFORE_TAU_0 = 2  # 10
+EVALUATE_EVERY_STEP = 5  # 5 #100
+EVALUATION_ROUNDS = 6  # 2 #20
+STEPS_BEFORE_TAU_0 = 8  # 10
 
 # Add in a line to stop
-MAX_STEPS = 3  # 10
+MAX_STEPS = 200  # 10
 
 
-def evaluate(net1, net2, rounds, device="cpu"):
+def evaluate(
+    net1,
+    net2,
+    rounds,
+    device=torch.device("cpu"),
+):
     n1_win, n2_win = 0, 0
     mcts_stores = [mcts_quixo.MCTS(), mcts_quixo.MCTS()]
 
@@ -53,7 +58,9 @@ def evaluate(net1, net2, rounds, device="cpu"):
             n2_win += 1
         elif r > 0.5:
             n1_win += 1
-    return n1_win / (n1_win + n2_win)
+
+    denominator = n1_win + n2_win
+    return 0.0 if denominator == 0 else n1_win / denominator
 
 
 if __name__ == "__main__":
@@ -63,7 +70,10 @@ if __name__ == "__main__":
         "--cuda", default=False, action="store_true", help="Enable CUDA"
     )
     args = parser.parse_args()
-    device = torch.device("cuda" if args.cuda else "cpu")
+    if args.cuda and torch.cuda.is_available():
+        train_device = torch.device("cuda")
+    else:
+        train_device = torch.device("cpu")
 
     saves_path = os.path.join("saves", args.name)
     os.makedirs(saves_path, exist_ok=True)
@@ -71,7 +81,7 @@ if __name__ == "__main__":
 
     net = model_quixo.Net(
         input_shape=model_quixo.OBS_SHAPE, actions_n=game_quixo.N_ACTIONS
-    ).to(device)
+    ).to(train_device)
     best_net = ptan.agent.TargetNet(net)
 
     optimizer = optim.SGD(net.parameters(), lr=LEARNING_RATE, momentum=0.9)
@@ -100,7 +110,7 @@ if __name__ == "__main__":
                     steps_before_tau_0=STEPS_BEFORE_TAU_0,
                     n_iterations=MCTS_ITERATIONS,
                     n_simulations=MCTS_SIMULATION_SIZE,
-                    device=device,
+                    device=train_device,
                 )
                 game_steps += steps
 
@@ -130,7 +140,6 @@ if __name__ == "__main__":
             if len(replay_buffer) < MIN_REPLAY_TO_TRAIN:
                 continue
 
-            # train
             sum_loss = 0.0
             sum_value_loss = 0.0
             sum_policy_loss = 0.0
@@ -142,12 +151,12 @@ if __name__ == "__main__":
                     game_quixo.decode_board(state) for state in batch_states
                 ]
                 states_v = model_quixo.states_to_tensor_batch(
-                    batch_states_lists, batch_who_moves, device
+                    batch_states_lists, batch_who_moves, train_device
                 )
 
                 optimizer.zero_grad()
-                probs_v = torch.FloatTensor(batch_probs).to(device)
-                values_v = torch.FloatTensor(batch_values).to(device)
+                probs_v = torch.FloatTensor(batch_probs).to(train_device)
+                values_v = torch.FloatTensor(batch_values).to(train_device)
                 out_logits_v, out_values_v = net(states_v)
 
                 loss_value_v = functional.mse_loss(out_values_v.squeeze(-1), values_v)
@@ -168,10 +177,12 @@ if __name__ == "__main__":
             tb_tracker.track("loss_value", sum_value_loss / TRAIN_ROUNDS, step_idx)
             tb_tracker.track("loss_policy", sum_policy_loss / TRAIN_ROUNDS, step_idx)
 
-            # evaluate net
             if step_idx % EVALUATE_EVERY_STEP == 0:
                 win_ratio = evaluate(
-                    net, best_net.target_model, rounds=EVALUATION_ROUNDS, device=device
+                    net,
+                    best_net.target_model,
+                    rounds=EVALUATION_ROUNDS,
+                    device=train_device,
                 )
                 print("Net evaluated, win ratio = %.2f" % win_ratio)
                 writer.add_scalar("eval_win_ratio", win_ratio, step_idx)

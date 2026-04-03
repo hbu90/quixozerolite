@@ -107,7 +107,9 @@ def encode_board_for_nn(dest_np: np.ndarray, state: NDArray[np.int8], player: in
 
 
 def states_to_tensor_batch(
-    state_list: list, player_list: list, device: str = "cpu"
+    state_list: list,
+    player_list: list,
+    device: torch.device = torch.device("cpu"),
 ) -> torch.Tensor:
     """
     Encodes states to shape used in neural network and returns a tensor, in batch form.
@@ -115,7 +117,7 @@ def states_to_tensor_batch(
     Args:
         state_list (list): List of states.
         player_list (list): List of players.
-        device (str): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
+        device (torch.device): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
     Returns:
         torch.Tensor: PyTorch tensor batch of encoded board states.
     """
@@ -136,7 +138,7 @@ def play_game(
     n_iterations: int,
     n_simulations: int,
     net1_plays_first: bool | None = None,
-    device: str = "cpu",
+    device: torch.device = torch.device("cpu"),
 ):
     """
     Simulates a single self-play game between two neural networks using MCTS.
@@ -155,7 +157,7 @@ def play_game(
         n_simulations (int): Number of MCTS simulations to batch together.
         net1_plays_first (bool | None): If True, net1 goes first; if False, net2 goes first. If None, the first player
         is chosen randomly. Defaults to None.
-        device (str): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
+        device (torch.device): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
     Returns:
         int: +1 if net1 wins, -1 if net2 wins, 0 for a draw.
         int: Total number of moves played in the game.
@@ -188,9 +190,6 @@ def play_game(
 
     while result is None:
         cur_player_idx = 0 if cur_player == 1 else 1
-        print(
-            f"Move number is {step} and current_player is {cur_player} and current_player_idx is {cur_player_idx}"
-        )
         mcts_stores[cur_player_idx].run_mcts(
             n_iterations,
             n_simulations,
@@ -202,7 +201,6 @@ def play_game(
         probs, _ = mcts_stores[cur_player_idx].get_policy_value(state, tau=tau)
         game_history.append((state, cur_player, probs))
 
-        print(f"Probs are: {probs}")
         legal_moves = game_quixo.possible_moves(state, cur_player)
         mask = np.zeros(game_quixo.N_ACTIONS)
         mask[legal_moves] = 1
@@ -212,9 +210,6 @@ def play_game(
         else:
             legal_probs = legal_probs / np.sum(legal_probs)
             action = np.random.choice(game_quixo.N_ACTIONS, p=legal_probs)
-        print(f"Legal probs are: {legal_probs}")
-
-        print(f"Model action chosen is {action}")
         if action not in game_quixo.possible_moves(state, cur_player):
             print("Impossible action selected")
         state, won = game_quixo.move(state, action, cur_player)
