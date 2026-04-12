@@ -4,7 +4,8 @@ from typing import Any
 import numpy as np
 import torch
 
-from lib import game_quixo, model_quixo
+import lib.game_quixo as game_quixo
+import lib.model_quixo as model_quixo
 
 import torch.nn.functional as functional
 import torch.nn as nn
@@ -86,7 +87,7 @@ class MCTS:
                 probs = [
                     0.75 * prob + 0.25 * noise for prob, noise in zip(probs, noises)
                 ]
-            # Calculate UCB score
+            # Calculate PUCT score
             score = [
                 value + self.c_puct * prob * total_sqrt / (1 + count)
                 for value, prob, count in zip(values_avg, probs, counts)

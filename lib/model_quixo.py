@@ -3,8 +3,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from numpy.typing import NDArray
-from lib import game_quixo, mcts_quixo
-
+import lib.game_quixo as game_quixo
+import lib.mcts_quixo as mcts_quixo
 
 OBS_SHAPE = (3, game_quixo.SIZE, game_quixo.SIZE)
 NUM_FILTERS = 64
@@ -130,7 +130,7 @@ def states_to_tensor_batch(
 
 
 def play_game(
-    mcts_stores: mcts_quixo.MCTS | list[mcts_quixo.MCTS] | None,
+    mcts_stores: "mcts_quixo.MCTS | list[mcts_quixo.MCTS] | None",
     replay_buffer: collections.deque | None,
     net1: nn.Module,
     net2: nn.Module,
