@@ -93,7 +93,7 @@ that can control the degree of exploration within the MCTS policy distribution.
 In AlphaGo Zero and AlphaZero, no rollouts are used (which was not the case for AlphaGo Fan and AlphaGo Lee).
 A rollout is where the game is played onwards from the leaf node to estimate the strength of the position.
 
-![Diagram](images/mcts.png)
+![MCTS Methodology](images/mcts.PNG)
 
 Self-play is where the program plays against itself, instead of against a human or another program. The program is provided 
 with complete information of the game structure and rules, but is not given any heuristics or rules on what policy to use. 
@@ -102,7 +102,7 @@ MCTS is described as a tool for both policy improvement and policy evaluation [2
 as these searches are iterated within self-play and used to select each move. Subsequently, the neural network is then 
 trained with the results of the more recent self-play data which includes moves and the winner (z). 
 
-![Diagram](images/nn_training.png)
+![Neural Network Training](images/nn_training.PNG)
 
 
 ## References
