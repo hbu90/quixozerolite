@@ -66,9 +66,9 @@ def legal_directions(row: int, col: int, size: int = 5) -> List[str]:
 
 # Create list of all possible actions for border pieces - 44 in total
 ACTION_MAP = []
-for idx, (row, col) in enumerate(BORDER_PIECES):
-    for dir in legal_directions(row, col):
-        ACTION_MAP.append((idx, dir))
+for border_index, (border_row, border_col) in enumerate(BORDER_PIECES):
+    for legal_dir in legal_directions(border_row, border_col):
+        ACTION_MAP.append((border_index, legal_dir))
 
 N_ACTIONS = len(ACTION_MAP)
 
