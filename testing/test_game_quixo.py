@@ -12,7 +12,7 @@ from lib.game_quixo import (
     ACTION_MAP,
     PLAYER_X,
     PLAYER_O,
-    BORDER_PIECES
+    BORDER_PIECES,
 )
 
 
