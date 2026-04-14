@@ -10,6 +10,8 @@ import lib.model_quixo as model_quixo
 import torch.nn.functional as functional
 import torch.nn as nn
 
+DIRICHLET_EPSILON = 0.25
+
 
 class MCTS:
     """
@@ -52,7 +54,7 @@ class MCTS:
             state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
             player (int): Integer representing the player (1 or -1).
         Returns:
-            float: Value of the game outcome for the current player at the leaf node.
+            float | None: Value of the game outcome for the current player at the leaf node. None if not terminal.
             int: Encoded integer that represents a unique Quixo 5x5 board state.
             int: Integer representing the player (1 or -1).
             list: List of visited states.
@@ -77,7 +79,7 @@ class MCTS:
             states.append(cur_state)
 
             counts = self.visit_count[cur_state]
-            total_sqrt = m.sqrt(sum(counts))
+            total_sqrt = m.sqrt(1 + sum(counts))
             probs = self.probs[cur_state]
             values_avg = self.value_avg[cur_state]
 
@@ -85,7 +87,8 @@ class MCTS:
             if cur_state == state_int:
                 noises = np.random.dirichlet([0.03] * game_quixo.N_ACTIONS)
                 probs = [
-                    0.75 * prob + 0.25 * noise for prob, noise in zip(probs, noises)
+                    (1 - DIRICHLET_EPSILON) * prob + DIRICHLET_EPSILON * noise
+                    for prob, noise in zip(probs, noises)
                 ]
             # Calculate PUCT score
             score = [
@@ -103,10 +106,10 @@ class MCTS:
             cur_state, won = game_quixo.move(cur_state, action, cur_player)
             if won == cur_player:
                 value = 1.0
+                break
             elif won == -cur_player:
                 value = -1.0
-            else:
-                value = 0.0
+                break
             cur_player = cur_player * -1
             moves_count = len(game_quixo.possible_moves(cur_state, cur_player))
             # If no moves left, then it is a draw
@@ -210,16 +213,15 @@ class MCTS:
 
         # Backup of searches
         for value, states, actions in backup_queue:
-            # The leaf state is not stored in states and actions,
-            # so the value of the leaf will be the value of the opponent
-            cur_value = -value
+            # value is from perspective of leaf_player
+
             for state_int, action in zip(states[::-1], actions[::-1]):
                 self.visit_count[state_int][action] += 1
-                self.value[state_int][action] += cur_value
+                self.value[state_int][action] += value
                 self.value_avg[state_int][action] = (
                     self.value[state_int][action] / self.visit_count[state_int][action]
                 )
-                cur_value = -cur_value
+                value = -value  # TO-DO: Look at this logic
 
     def get_policy_value(
         self, state_int: int, tau: int = 1
