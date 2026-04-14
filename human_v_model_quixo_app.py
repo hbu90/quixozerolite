@@ -39,29 +39,32 @@ class QuixoApp:
         self.selected = None
         self.cube_actions = []
         self.game_over = False
-        self.message = "Load model (L), choose player (1=you, 2=agent)"
+        self.message = (
+            "Load model (L), choose player (1=you first, 2=agent first), Reset (R)"
+        )
 
     def load_model(self):
         Tk().withdraw()
-
         path = filedialog.askopenfilename(filetypes=[("Model", "*.dat")])
 
         if not path:
             return
 
-        net = model_quixo.Net(model_quixo.OBS_SHAPE, game_quixo.N_ACTIONS)
+        net = model_quixo.Net(
+            input_shape=model_quixo.OBS_SHAPE, actions_n=game_quixo.N_ACTIONS
+        )
+
         net.load_state_dict(torch.load(path, map_location="cpu"))
         net.eval()
 
         self.net = net
-        self.message = "Model loaded!"
+        self.message = f"Model loaded: {path.split('/')[-1]}"
 
     def draw(self):
         screen.fill(WHITE)
 
         board = game_quixo.decode_board(self.state)
 
-        # draw board
         for r in range(BOARD_SIZE):
             for c in range(BOARD_SIZE):
                 x = MARGIN + c * CELL
@@ -86,7 +89,7 @@ class QuixoApp:
 
             for a in legal:
                 border_idx, _ = game_quixo.ACTION_MAP[a]
-                r, c = game_quixo.BORDER_SQUARES[border_idx]
+                r, c = game_quixo.BORDER_PIECES[border_idx]
                 legal_cubes.add((r, c))
 
             for r, c in legal_cubes:
@@ -94,11 +97,9 @@ class QuixoApp:
                 y = MARGIN + r * CELL
                 pygame.draw.rect(screen, GREEN, (x, y, CELL, CELL), 4)
 
-        # message
         msg = small_font.render(self.message, True, BLACK)
         screen.blit(msg, (20, 20))
 
-        # TURN INDICATOR
         if not self.game_over:
             symbol = "X" if self.player == 1 else "O"
 
@@ -123,7 +124,7 @@ class QuixoApp:
         cube_actions = [
             a
             for a in legal
-            if game_quixo.BORDER_SQUARES[game_quixo.ACTION_MAP[a][0]] == (r, c)
+            if game_quixo.BORDER_PIECES[game_quixo.ACTION_MAP[a][0]] == (r, c)
         ]
 
         if not cube_actions:
@@ -151,7 +152,6 @@ class QuixoApp:
 
         for action in self.cube_actions:
             _, d = game_quixo.ACTION_MAP[action]
-
             if d == direction:
                 self.apply_move(action)
                 return
@@ -171,10 +171,13 @@ class QuixoApp:
         self.selected = None
 
         pygame.time.wait(150)
-        self.agent_move()
+
+        if self.player != self.human_player:
+            self.agent_move()
 
     def agent_move(self):
         if self.net is None or self.game_over:
+            self.message = "No model loaded!"
             return
 
         self.message = "Agent thinking..."
@@ -182,26 +185,23 @@ class QuixoApp:
 
         board_np = game_quixo.decode_board(self.state)
 
-        # FAST encoding (no helper function)
-        current = (board_np == self.player).astype(np.float32)
-        opponent = (board_np == -self.player).astype(np.float32)
-
-        batch = torch.tensor(
-            np.stack([current, opponent]), dtype=torch.float32
-        ).unsqueeze(0)
+        batch = model_quixo.states_to_tensor_batch(
+            [board_np], [self.player], device="cpu"
+        )
 
         with torch.inference_mode():
             logits, _ = self.net(batch)
-            probs = torch.softmax(logits, dim=1)[0]
+            probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
 
         legal = game_quixo.possible_moves(self.state, self.player)
 
         if not legal:
             self.message = "No legal moves!"
+            self.game_over = True
             return
 
-        mask = torch.zeros(game_quixo.N_ACTIONS)
-        mask[legal] = 1
+        mask = np.zeros(game_quixo.N_ACTIONS, dtype=np.float32)
+        mask[legal] = 1.0
 
         probs = probs * mask
 
@@ -210,7 +210,7 @@ class QuixoApp:
         else:
             probs = probs / probs.sum()
 
-        action = torch.multinomial(probs, 1).item()
+        action = np.random.choice(game_quixo.N_ACTIONS, p=probs)
 
         self.state, won = game_quixo.move(self.state, action, self.player)
 
@@ -254,14 +254,16 @@ while True:
                 app.load_model()
 
             if event.key == pygame.K_1:
-                app.player = 1
+                app.reset()
                 app.human_player = 1
+                app.player = 1
                 app.message = "You start (X)"
 
             if event.key == pygame.K_2:
-                app.player = -1
-                app.human_player = 1
-                app.message = "Agent starts (O)"
+                app.reset()
+                app.human_player = -1
+                app.player = 1
+                app.message = "Agent starts (X)"
                 app.agent_move()
 
             if event.key == pygame.K_r:
