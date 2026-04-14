@@ -173,7 +173,7 @@ def play_game(
     if mcts_stores is None:
         mcts_stores = [mcts_quixo.MCTS(), mcts_quixo.MCTS()]
     elif isinstance(mcts_stores, mcts_quixo.MCTS):
-        mcts_stores = [mcts_stores, mcts_stores]
+        mcts_stores = [mcts_stores, mcts_quixo.MCTS()]
 
     state = game_quixo.encode_board(game_quixo.INITIAL_STATE)
     nets = [net1, net2]
@@ -210,13 +210,18 @@ def play_game(
         else:
             legal_probs = legal_probs / np.sum(legal_probs)
             action = np.random.choice(game_quixo.N_ACTIONS, p=legal_probs)
-        if action not in game_quixo.possible_moves(state, cur_player):
+        if action not in legal_moves:
             print("Impossible action selected")
         state, won = game_quixo.move(state, action, cur_player)
-        if won:
+        if won == cur_player:
             print(f"Game won by {cur_player}!")
-            result = 1
-            net1_result = 1 if cur_player == 1 else -1
+            result = won
+            net1_result = won
+            break
+        elif won == -cur_player:
+            print(f"Game won by {-cur_player}!")
+            result = -won
+            net1_result = -won
             break
         cur_player = cur_player * -1
         if len(game_quixo.possible_moves(state, cur_player)) == 0:
