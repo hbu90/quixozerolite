@@ -7,6 +7,8 @@ import collections
 from tqdm import tqdm
 
 from lib import game_quixo, model_quixo, mcts_quixo
+from lib.agents_quixo import MCTSAgent
+from evaluate import play_matches, win_ratio_from_results
 
 from tensorboardX import SummaryWriter
 
@@ -27,40 +29,10 @@ MIN_REPLAY_TO_TRAIN = 200
 BEST_NET_WIN_RATIO = 0.55
 
 EVALUATE_EVERY_STEP = 5
-EVALUATION_ROUNDS = 6
+EVALUATION_ROUNDS = 7
 STEPS_BEFORE_TAU_0 = 8
 
 MAX_STEPS = 200
-
-
-def evaluate(
-    net1,
-    net2,
-    rounds,
-    device=torch.device("cpu"),
-):
-    n1_win, n2_win = 0, 0
-    mcts_stores = [mcts_quixo.MCTS(), mcts_quixo.MCTS()]
-
-    for r_idx in range(rounds):
-        r, _ = model_quixo.play_game(
-            mcts_stores=mcts_stores,
-            replay_buffer=None,
-            net1=net1,
-            net2=net2,
-            steps_before_tau_0=0,
-            n_iterations=20,
-            n_simulations=16,
-            device=device,
-        )
-        if r < -0.5:
-            n2_win += 1
-        elif r > 0.5:
-            n1_win += 1
-
-    denominator = n1_win + n2_win
-    return 0.0 if denominator == 0 else n1_win / denominator
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -86,14 +58,18 @@ if __name__ == "__main__":
     optimizer = optim.SGD(net.parameters(), lr=LEARNING_RATE, momentum=0.9)
 
     replay_buffer = collections.deque(maxlen=REPLAY_BUFFER)
-    mcts_store = mcts_quixo.MCTS()
     step_idx = 0
     best_idx = 0
+    mcts_1 = mcts_quixo.MCTS()
+    mcts_2 = mcts_quixo.MCTS()
+
+    agent1 = MCTSAgent(net, mcts_1, MCTS_ITERATIONS, MCTS_SIMULATION_SIZE, train_device)
+    agent2 = MCTSAgent(net, mcts_2, MCTS_ITERATIONS, MCTS_SIMULATION_SIZE, train_device)
 
     with ptan.common.utils.TBMeanTracker(writer, batch_size=10) as tb_tracker:
         while step_idx < MAX_STEPS:
             t = time.time()
-            prev_nodes = len(mcts_store)
+            prev_nodes = len(mcts_1) + len(mcts_2)
             game_steps = 0
 
             print("SELF-PLAY")
@@ -101,21 +77,17 @@ if __name__ == "__main__":
 
             for _ in tqdm(range(PLAY_EPISODES)):
                 _, steps = model_quixo.play_game(
-                    mcts_store,
                     replay_buffer,
-                    best_net.target_model,
-                    best_net.target_model,
+                    agent1,
+                    agent2,
                     steps_before_tau_0=STEPS_BEFORE_TAU_0,
-                    n_iterations=MCTS_ITERATIONS,
-                    n_simulations=MCTS_SIMULATION_SIZE,
-                    device=train_device,
                 )
                 game_steps += steps
 
             print("SELF PLAY:", time.time() - t0)
             t1 = time.time()
 
-            game_nodes = len(mcts_store) - prev_nodes
+            game_nodes = (len(mcts_1) + len(mcts_2)) - prev_nodes
             dt = time.time() - t
             speed_steps = game_steps / dt
             speed_nodes = game_nodes / dt
@@ -176,12 +148,28 @@ if __name__ == "__main__":
             tb_tracker.track("loss_policy", sum_policy_loss / TRAIN_ROUNDS, step_idx)
 
             if step_idx % EVALUATE_EVERY_STEP == 0:
-                win_ratio = evaluate(
+                eval_agent = MCTSAgent(
                     net,
-                    best_net.target_model,
-                    rounds=EVALUATION_ROUNDS,
-                    device=train_device,
+                    mcts_quixo.MCTS(),
+                    MCTS_ITERATIONS,
+                    MCTS_SIMULATION_SIZE,
+                    train_device,
                 )
+                best_agent = MCTSAgent(
+                    best_net.target_model,
+                    mcts_quixo.MCTS(),
+                    MCTS_ITERATIONS,
+                    MCTS_SIMULATION_SIZE,
+                    train_device,
+                )
+                results = play_matches(
+                    eval_agent,
+                    best_agent,
+                    "eval_agent",
+                    "best_agent",
+                    games=EVALUATION_ROUNDS,
+                )
+                win_ratio = win_ratio_from_results(results)
                 print("Net evaluated, win ratio = %.2f" % win_ratio)
                 writer.add_scalar("eval_win_ratio", win_ratio, step_idx)
                 if win_ratio > BEST_NET_WIN_RATIO:
@@ -192,4 +180,5 @@ if __name__ == "__main__":
                         saves_path, "best_%03d_%05d.dat" % (best_idx, step_idx)
                     )
                     torch.save(net.state_dict(), file_name)
-                    mcts_store.clear()
+                    mcts_1.clear()
+                    mcts_2.clear()

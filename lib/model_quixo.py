@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from numpy.typing import NDArray
 import lib.game_quixo as game_quixo
-import lib.mcts_quixo as mcts_quixo
+import lib.agents_quixo as agents_quixo
 
 OBS_SHAPE = (3, game_quixo.SIZE, game_quixo.SIZE)
 NUM_FILTERS = 64
@@ -130,57 +130,47 @@ def states_to_tensor_batch(
 
 
 def play_game(
-    mcts_stores: "mcts_quixo.MCTS | list[mcts_quixo.MCTS] | None",
     replay_buffer: collections.deque | None,
-    net1: nn.Module,
-    net2: nn.Module,
+    agent1: (
+        agents_quixo.MCTSAgent
+        | agents_quixo.RandomAgent
+        | agents_quixo.WinBlockAgent
+        | agents_quixo.GreedyWinAgent
+    ),
+    agent2: (
+        agents_quixo.MCTSAgent
+        | agents_quixo.RandomAgent
+        | agents_quixo.WinBlockAgent
+        | agents_quixo.GreedyWinAgent
+    ),
     steps_before_tau_0: int,
-    n_iterations: int,
-    n_simulations: int,
-    net1_plays_first: bool | None = None,
-    device: torch.device = torch.device("cpu"),
+    agent1_plays_first: bool | None = None,
 ):
     """
     Simulates a single self-play game between two neural networks using MCTS.
 
     Args:
-        mcts_stores (mcts_quixo.MCTS | list[mcts_quixo.MCTS] | None): A singular Monte-Carlo Tree Search class or list
-        of Monte-Carlo Tree Search classes that keeps statistics for every state encountered during the search. Can be
-        set as None to create a new instance.
         replay_buffer (collections.deque | None): Replay buffer storing (state, player, policy_probs, result) tuples.
         Can be set as None to disable replay storage.
-        net1 (nn.Module): Neural network that predicts policy and value.
-        net2 (nn.Module): Neural network that predicts policy and value.
+        agent1: The first agent. Can be an MCTSAgent or a heuristic-based agent.
+        agent2: The second agent. Can be an MCTSAgent or a heuristic-based agent.
         steps_before_tau_0 (int): Number of moves at the start of the game for which temperature parameter is 1, before
         switching to zero.
-        n_iterations (int): Number of times MCTS batch of simulations are run.
-        n_simulations (int): Number of MCTS simulations to batch together.
-        net1_plays_first (bool | None): If True, net1 goes first; if False, net2 goes first. If None, the first player
+        agent1_plays_first (bool | None): If True, net1 goes first; if False, net2 goes first. If None, the first player
         is chosen randomly. Defaults to None.
-        device (torch.device): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
     Returns:
         int: +1 if net1 wins, -1 if net2 wins, 0 for a draw.
         int: Total number of moves played in the game.
     """
     assert isinstance(replay_buffer, (collections.deque, type(None)))
-    assert isinstance(mcts_stores, (mcts_quixo.MCTS, type(None), list))
-    assert isinstance(net1, Net)
-    assert isinstance(net2, Net)
     assert isinstance(steps_before_tau_0, int) and steps_before_tau_0 >= 0
-    assert isinstance(n_iterations, int) and n_iterations > 0
-    assert isinstance(n_simulations, int) and n_simulations > 0
-
-    if mcts_stores is None:
-        mcts_stores = [mcts_quixo.MCTS(), mcts_quixo.MCTS()]
-    elif isinstance(mcts_stores, mcts_quixo.MCTS):
-        mcts_stores = [mcts_stores, mcts_quixo.MCTS()]
 
     state = game_quixo.encode_board(game_quixo.INITIAL_STATE)
-    nets = [net1, net2]
-    if net1_plays_first is None:
+    agents = [agent1, agent2]
+    if agent1_plays_first is None:
         cur_player = np.random.choice([1, -1])
     else:
-        cur_player = 1 if net1_plays_first else -1
+        cur_player = 1 if agent1_plays_first else -1
     step = 0
     tau = 1 if steps_before_tau_0 > 0 else 0
     game_history = []
@@ -190,28 +180,17 @@ def play_game(
 
     while result is None:
         cur_player_idx = 0 if cur_player == 1 else 1
-        mcts_stores[cur_player_idx].run_mcts(
-            n_iterations,
-            n_simulations,
-            state,
-            cur_player,
-            nets[cur_player_idx],
-            device=device,
-        )
-        probs, _ = mcts_stores[cur_player_idx].get_policy_value(state, tau=tau)
+        agent = agents[cur_player_idx]
+
+        if agent.name == "mcts_net":
+            action, probs = agent.select_action(state, cur_player, tau)
+        else:
+            action = agent.select_action(state, cur_player)
+            probs = np.zeros(game_quixo.N_ACTIONS, dtype=np.float32)
+            probs[action] = 1.0
+
         game_history.append((state, cur_player, probs))
 
-        legal_moves = game_quixo.possible_moves(state, cur_player)
-        mask = np.zeros(game_quixo.N_ACTIONS)
-        mask[legal_moves] = 1
-        legal_probs = probs * mask
-        if legal_probs.sum() == 0:
-            action = np.random.choice(legal_moves)
-        else:
-            legal_probs = legal_probs / np.sum(legal_probs)
-            action = np.random.choice(game_quixo.N_ACTIONS, p=legal_probs)
-        if action not in legal_moves:
-            print("Impossible action selected")
         state, won = game_quixo.move(state, action, cur_player)
         if won == cur_player:
             print(f"Game won by {cur_player}!")
