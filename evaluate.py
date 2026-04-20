@@ -41,12 +41,16 @@ def play_matches(
         | agents_quixo.RandomAgent
         | agents_quixo.WinBlockAgent
         | agents_quixo.GreedyWinAgent
-    ), player_b_agent: (
+    ),
+    player_b_agent: (
         agents_quixo.MCTSAgent
         | agents_quixo.RandomAgent
         | agents_quixo.WinBlockAgent
         | agents_quixo.GreedyWinAgent
-    ), player_a_name: str, player_b_name: str, games: int
+    ),
+    player_a_name: str,
+    player_b_name: str,
+    games: int,
 ) -> list[tuple[str, str, float]]:
     """ """
     results = []
@@ -119,7 +123,9 @@ def tournament(
         m1 = players[i]
         m2 = players[j]
 
-        m1_v_m2_results = play_matches(m1.agent, m2.agent, m1.name, m2.name, games=games_per_pair)
+        m1_v_m2_results = play_matches(
+            m1.agent, m2.agent, m1.name, m2.name, games=games_per_pair
+        )
 
         game_results.extend(m1_v_m2_results)
 

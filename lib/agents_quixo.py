@@ -77,7 +77,9 @@ class MCTSAgent:
         self.device = device
         self.name = "mcts_net"
 
-    def select_action(self, state_int: int, player: int, tau: float = 1.0) -> tuple[int, list[float]]:
+    def select_action(
+        self, state_int: int, player: int, tau: float = 1.0
+    ) -> tuple[int, list[float]]:
         self.mcts.clear()
 
         self.mcts.run_mcts(
