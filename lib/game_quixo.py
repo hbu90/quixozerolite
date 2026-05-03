@@ -1,6 +1,7 @@
 import numpy as np
 from typing import List
 from numpy.typing import NDArray
+from functools import lru_cache
 
 SIZE = 5
 PLAYER_X = 1
@@ -91,6 +92,7 @@ def encode_board(board: NDArray[np.int8]) -> int:
     return int(ternary @ POW3_25)
 
 
+@lru_cache(maxsize=100_000)
 def decode_board(value: int) -> NDArray[np.int8]:
     """
     Decodes an integer back into a 5x5 Quixo board.
@@ -221,6 +223,23 @@ def move(state_int: int, action_idx: int, player: int) -> tuple[int, int]:
         raise ValueError()
 
 
+@lru_cache(maxsize=100_000)
+def legal_moves_cached(state_int: int, player: int):
+    board = decode_board(state_int)
+
+    moves = []
+    for idx, (border_idx, direction) in enumerate(ACTION_MAP):
+        row, col = BORDER_PIECES[border_idx]
+
+        if board[row][col] not in (0, player):
+            continue
+
+        if direction in legal_directions(row, col):
+            moves.append(idx)
+
+    return tuple(moves)
+
+
 def possible_moves(state_int: int, player: int) -> list:
     """
     Output all possible moves for a player in a given board state.
@@ -231,9 +250,4 @@ def possible_moves(state_int: int, player: int) -> list:
     Returns:
         list: List of action indices that are valid for the given player.
     """
-    assert player in [PLAYER_O, PLAYER_X]
-
-    state = decode_board(state_int)
-    return [
-        idx for idx, action in enumerate(ACTION_MAP) if check_valid(state, idx, player)
-    ]
+    return list(legal_moves_cached(state_int, player))

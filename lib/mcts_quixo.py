@@ -183,13 +183,14 @@ class MCTS:
 
         # Expand nodes using neural network
         if expand_queue:
-            batch_v = model_quixo.states_to_tensor_batch(
-                expand_states, expand_players, device
-            )
-            logits_v, values_v = net(batch_v)
-            probs_v = functional.softmax(logits_v, dim=1)
-            values = values_v.data.cpu().numpy()[:, 0]
-            probs = probs_v.data.cpu().numpy()
+            with torch.no_grad():
+                batch_v = model_quixo.states_to_tensor_batch(
+                    expand_states, expand_players, device
+                )
+                logits_v, values_v = net(batch_v)
+                probs_v = functional.softmax(logits_v, dim=1)
+                values = values_v.data.cpu().numpy()[:, 0]
+                probs = probs_v.data.cpu().numpy()
 
             # Create nodes
             for (leaf_state, leaf_player, states, actions), value, prob in zip(
