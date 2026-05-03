@@ -38,6 +38,8 @@ INITIAL_STATE = np.asarray(
     dtype=np.int8,
 )
 
+POW3_25 = 3 ** np.arange(24, -1, -1, dtype=np.int64)
+
 
 def legal_directions(row: int, col: int, size: int = 5) -> List[str]:
     """
@@ -84,14 +86,9 @@ def encode_board(board: NDArray[np.int8]) -> int:
     """
     assert board.shape == (5, 5)
 
-    # Map board to base-3 version {-1,0,1} → {0,1,2}
-    ternary_board = board + 1
+    ternary = (board.astype(np.int64) + 1).ravel()
 
-    value = 0
-    for t in ternary_board.flatten():
-        value = value * 3 + int(t)
-
-    return value
+    return int(ternary @ POW3_25)
 
 
 def decode_board(value: int) -> NDArray[np.int8]:
