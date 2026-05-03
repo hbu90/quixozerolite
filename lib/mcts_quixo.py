@@ -92,8 +92,8 @@ class MCTS:
                 ]
             # Calculate PUCT score
             score = [
-                value + self.c_puct * prob * total_sqrt / (1 + count)
-                for value, prob, count in zip(values_avg, probs, counts)
+                mcts_value_avg + self.c_puct * mcts_prob * total_sqrt / (1 + mcts_count)
+                for mcts_value_avg, mcts_prob, mcts_count in zip(values_avg, probs, counts)
             ]
             invalid_actions = set(range(game_quixo.N_ACTIONS)) - set(
                 game_quixo.possible_moves(cur_state, cur_player)
@@ -174,12 +174,12 @@ class MCTS:
             if value is not None:
                 backup_queue.append((value, states, actions))
             else:
-                if leaf_state not in planned:
-                    planned.add(leaf_state)
+                if (leaf_state, leaf_player) not in planned:
+                    planned.add((leaf_state, leaf_player))
                     leaf_state_lists = game_quixo.decode_board(leaf_state)
                     expand_states.append(leaf_state_lists)
                     expand_players.append(leaf_player)
-                    expand_queue.append((leaf_state, states, actions))
+                    expand_queue.append((leaf_state, leaf_player, states, actions))
 
         # Expand nodes using neural network
         if expand_queue:
@@ -192,7 +192,7 @@ class MCTS:
             probs = probs_v.data.cpu().numpy()
 
             # Create nodes
-            for (leaf_state, states, actions), value, prob in zip(
+            for (leaf_state, leaf_player, states, actions), value, prob in zip(
                 expand_queue, values, probs
             ):
                 self.visit_count[leaf_state] = [0] * game_quixo.N_ACTIONS
@@ -225,7 +225,7 @@ class MCTS:
 
     def get_policy_value(
         self, state_int: int, tau: int = 1
-    ) -> tuple[list[float], float]:
+    ) -> tuple[list[float], list[float]]:
         """
         Convert MCTS search statistics at a state into a policy distribution and values for each action.
 
@@ -234,7 +234,7 @@ class MCTS:
             tau (int): Parameter that controls degree of exploration for returned policy. Defaults to 1.
         Returns:
             list[float]: Policy (π(s)) for a given state.
-            float: Values (Q(s,a)) for a given state.
+            list[float]:: Values (Q(s,a)) for a given state.
         """
         counts = self.visit_count[state_int]
         if tau == 0:
