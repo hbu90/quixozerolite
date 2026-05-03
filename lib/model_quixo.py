@@ -95,15 +95,14 @@ def encode_board_for_nn(dest_np: np.ndarray, state: NDArray[np.int8], player: in
     """
     assert dest_np.shape == OBS_SHAPE
 
-    for col_idx, col in enumerate(state):
-        for rev_row_idx, cell in enumerate(col):
-            row_idx = game_quixo.SIZE - rev_row_idx - 1
-            if cell == player:
-                dest_np[0, row_idx, col_idx] = 1.0
-            elif cell == -player:
-                dest_np[1, row_idx, col_idx] = 1.0
-            else:
-                dest_np[2, row_idx, col_idx] = 1.0
+    for row_idx, row in enumerate(state):
+          for col_idx, cell in enumerate(row):
+              if cell == player:
+                  dest_np[0, row_idx, col_idx] = 1.0
+              elif cell == -player:
+                  dest_np[1, row_idx, col_idx] = 1.0
+              else:
+                  dest_np[2, row_idx, col_idx] = 1.0
 
 
 def states_to_tensor_batch(
@@ -195,12 +194,18 @@ def play_game(
         if won == cur_player:
             print(f"Game won by {cur_player}!")
             result = won
-            net1_result = won
+            if cur_player == 1:
+                net1_result = 1
+            elif cur_player == -1:
+                net1_result = -1
             break
         elif won == -cur_player:
             print(f"Game won by {-cur_player}!")
             result = -won
-            net1_result = -won
+            if cur_player == 1:
+                net1_result = -1
+            elif cur_player == -1:
+                net1_result = 1
             break
         cur_player = cur_player * -1
         if len(game_quixo.possible_moves(state, cur_player)) == 0:
