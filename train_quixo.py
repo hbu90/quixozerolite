@@ -16,23 +16,34 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as functional
 
-
-PLAY_EPISODES = 10
-MCTS_ITERATIONS = 10
-MCTS_SIMULATION_SIZE = 4
-REPLAY_BUFFER = 2000
-LEARNING_RATE = 0.01
-BATCH_SIZE = 32
-TRAIN_ROUNDS = 3
-MIN_REPLAY_TO_TRAIN = 200
-
+PLAY_EPISODES = 40
+MCTS_ITERATIONS = 60
+MCTS_SIMULATION_SIZE = 24
+REPLAY_BUFFER = 50000
+LEARNING_RATE = 0.003
+BATCH_SIZE = 128
+TRAIN_ROUNDS = 10
+MIN_REPLAY_TO_TRAIN = 5000
 BEST_NET_WIN_RATIO = 0.55
-
 EVALUATE_EVERY_STEP = 5
-EVALUATION_ROUNDS = 7
-STEPS_BEFORE_TAU_0 = 8
+EVALUATION_ROUNDS = 20
+STEPS_BEFORE_TAU_0 = 15
+MAX_STEPS = 500
 
-MAX_STEPS = 200
+# PLAY_EPISODES = 2
+# MCTS_ITERATIONS = 5
+# MCTS_SIMULATION_SIZE = 2
+# REPLAY_BUFFER = 1000
+# LEARNING_RATE = 0.01
+# BATCH_SIZE = 32
+# TRAIN_ROUNDS = 1
+# MIN_REPLAY_TO_TRAIN = 200
+# BEST_NET_WIN_RATIO = 0.55
+# EVALUATE_EVERY_STEP = 10
+# EVALUATION_ROUNDS = 3
+# STEPS_BEFORE_TAU_0 = 8
+# MAX_STEPS = 200
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -85,6 +96,9 @@ if __name__ == "__main__":
                 game_steps += steps
 
             print("SELF PLAY:", time.time() - t0)
+            tb_tracker.track("replay_size", len(replay_buffer), step_idx)
+            tb_tracker.track("mcts_tree_size_agent1", len(mcts_1), step_idx)
+            tb_tracker.track("mcts_tree_size_agent2", len(mcts_2), step_idx)
             t1 = time.time()
 
             game_nodes = (len(mcts_1) + len(mcts_2)) - prev_nodes
