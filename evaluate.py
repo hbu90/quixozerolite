@@ -94,7 +94,7 @@ def tournament(
     players = []
 
     for path in player_model_paths:
-        name = os.path.basename(path)
+        basename = os.path.basename(path)
         net = load_model(path, device=device)
         agent = agents_quixo.MCTSAgent(
             net,
@@ -103,7 +103,9 @@ def tournament(
             TOURNAMENT_MCTS_SIMULATION_SIZE,
             device,
         )
-        players.append(TournamentPlayer(name=name, agent=agent))
+        players.append(
+            TournamentPlayer(name=os.path.splitext(basename)[0], agent=agent)
+        )
 
     random_player = agents_quixo.RandomAgent()
     greedy_win_player = agents_quixo.GreedyWinAgent()
