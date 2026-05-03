@@ -79,8 +79,7 @@ class MCTSAgent:
 
     def select_action(
         self, state_int: int, player: int, tau: float = 1.0
-    ) -> tuple[int, list[float]]:
-        self.mcts.clear()
+    ) -> tuple[int, np.ndarray]:
 
         self.mcts.run_mcts(
             n_iterations=self.n_iters,
@@ -96,6 +95,7 @@ class MCTSAgent:
         legal_moves = game_quixo.possible_moves(state_int, player)
         mask = np.zeros(game_quixo.N_ACTIONS)
         mask[legal_moves] = 1
+        probs = np.array(probs, dtype=np.float32)
 
         legal_probs = probs * mask
         if legal_probs.sum() == 0:
