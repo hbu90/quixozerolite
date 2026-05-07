@@ -1,2 +1,3 @@
 runs/
 .pytest_cache/
+.idea/
