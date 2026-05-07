@@ -13,7 +13,8 @@ NUM_FILTERS = 64
 class Net(nn.Module):
     def __init__(self, input_shape, actions_n):
         super(Net, self).__init__()
-
+        self.input_shape = input_shape
+        self.actions_n = actions_n
         self.conv_in = nn.Sequential(
             nn.Conv2d(input_shape[0], NUM_FILTERS, kernel_size=3, padding=1),
             nn.BatchNorm2d(NUM_FILTERS),
@@ -96,13 +97,13 @@ def encode_board_for_nn(dest_np: np.ndarray, state: NDArray[np.int8], player: in
     assert dest_np.shape == OBS_SHAPE
 
     for row_idx, row in enumerate(state):
-          for col_idx, cell in enumerate(row):
-              if cell == player:
-                  dest_np[0, row_idx, col_idx] = 1.0
-              elif cell == -player:
-                  dest_np[1, row_idx, col_idx] = 1.0
-              else:
-                  dest_np[2, row_idx, col_idx] = 1.0
+        for col_idx, cell in enumerate(row):
+            if cell == player:
+                dest_np[0, row_idx, col_idx] = 1.0
+            elif cell == -player:
+                dest_np[1, row_idx, col_idx] = 1.0
+            else:
+                dest_np[2, row_idx, col_idx] = 1.0
 
 
 def states_to_tensor_batch(
@@ -142,7 +143,7 @@ def play_game(
         | agents_quixo.WinBlockAgent
         | agents_quixo.GreedyWinAgent
     ),
-    steps_before_tau_0: int,
+    moves_before_tau_0: int,
     agent1_plays_first: bool | None = None,
 ):
     """
@@ -153,7 +154,7 @@ def play_game(
         Can be set as None to disable replay storage.
         agent1: The first agent. Can be an MCTSAgent or a heuristic-based agent.
         agent2: The second agent. Can be an MCTSAgent or a heuristic-based agent.
-        steps_before_tau_0 (int): Number of moves at the start of the game for which temperature parameter is 1, before
+        moves_before_tau_0 (int): Number of moves at the start of the game for which temperature parameter is 1, before
         switching to zero.
         agent1_plays_first (bool | None): If True, net1 goes first; if False, net2 goes first. If None, the first player
         is chosen randomly. Defaults to None.
@@ -162,7 +163,7 @@ def play_game(
         int: Total number of moves played in the game.
     """
     assert isinstance(replay_buffer, (collections.deque, type(None)))
-    assert isinstance(steps_before_tau_0, int) and steps_before_tau_0 >= 0
+    assert isinstance(moves_before_tau_0, int) and moves_before_tau_0 >= 0
 
     state = game_quixo.encode_board(game_quixo.INITIAL_STATE)
     agents = [agent1, agent2]
@@ -170,8 +171,8 @@ def play_game(
         cur_player = np.random.choice([1, -1])
     else:
         cur_player = 1 if agent1_plays_first else -1
-    step = 0
-    tau = 1 if steps_before_tau_0 > 0 else 0
+    move = 0
+    tau = 1 if moves_before_tau_0 > 0 else 0
     game_history = []
 
     result = None
@@ -212,8 +213,8 @@ def play_game(
             result = 0
             net1_result = 0
             break
-        step += 1
-        if step >= steps_before_tau_0:
+        move += 1
+        if move >= moves_before_tau_0:
             tau = 0
 
     if replay_buffer is not None:
@@ -221,4 +222,4 @@ def play_game(
             replay_buffer.append((state, cur_player, probs, result))
             result = -result
 
-    return net1_result, step
+    return net1_result, move
