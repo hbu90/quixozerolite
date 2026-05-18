@@ -62,7 +62,7 @@ def play_matches(
             replay_buffer=None,
             agent1=player_a_agent,
             agent2=player_b_agent,
-            steps_before_tau_0=0,
+            moves_before_tau_0=0,
             agent1_plays_first=player_a_first,
         )
 
