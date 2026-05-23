@@ -9,11 +9,10 @@ from lib import game_quixo, model_quixo, mcts_quixo
 from lib.agents_quixo import MCTSAgent
 from evaluate import play_matches, win_ratio_from_results
 
-from tensorboardX import SummaryWriter
-
 import torch
 import torch.optim as optim
 import torch.nn.functional as functional
+from torch.utils.tensorboard import SummaryWriter
 
 
 class TargetNet:
@@ -33,9 +32,9 @@ class TargetNet:
         self.target_model.load_state_dict(self.model.state_dict())
 
 
-PLAY_EPISODES = 40
-MCTS_ITERATIONS = 60
-MCTS_SIMULATION_SIZE = 24
+PLAY_EPISODES = 25
+MCTS_ITERATIONS = 12
+MCTS_SIMULATION_SIZE = 5
 REPLAY_BUFFER = 50000
 LEARNING_RATE = 0.003
 BATCH_SIZE = 128
@@ -43,23 +42,9 @@ TRAIN_ROUNDS = 10
 MIN_REPLAY_TO_TRAIN = 5000
 BEST_NET_WIN_RATIO = 0.55
 EVALUATE_EVERY_STEP = 5
-EVALUATION_ROUNDS = 20
+EVALUATION_ROUNDS = 40
 MOVES_BEFORE_TAU_0 = 15
-MAX_STEPS = 500
-
-# PLAY_EPISODES = 2
-# MCTS_ITERATIONS = 5
-# MCTS_SIMULATION_SIZE = 2
-# REPLAY_BUFFER = 1000
-# LEARNING_RATE = 0.01
-# BATCH_SIZE = 32
-# TRAIN_ROUNDS = 1
-# MIN_REPLAY_TO_TRAIN = 200
-# BEST_NET_WIN_RATIO = 0.55
-# EVALUATE_EVERY_STEP = 10
-# EVALUATION_ROUNDS = 3
-# MOVES_BEFORE_TAU_0 = 8
-# MAX_STEPS = 200
+MAX_STEPS = 200
 
 
 if __name__ == "__main__":
@@ -103,7 +88,10 @@ if __name__ == "__main__":
         print("SELF-PLAY")
         t0 = time.time()
 
-        for _ in tqdm(range(PLAY_EPISODES)):
+        for episode in tqdm(range(PLAY_EPISODES)):
+            print(f"EPISODE: {episode}")
+            mcts_1.clear()
+            mcts_2.clear()
             net1_result, moves = model_quixo.play_game(
                 replay_buffer,
                 agent1,

@@ -93,7 +93,9 @@ class MCTS:
             # Calculate PUCT score
             score = [
                 mcts_value_avg + self.c_puct * mcts_prob * total_sqrt / (1 + mcts_count)
-                for mcts_value_avg, mcts_prob, mcts_count in zip(values_avg, probs, counts)
+                for mcts_value_avg, mcts_prob, mcts_count in zip(
+                    values_avg, probs, counts
+                )
             ]
             invalid_actions = set(range(game_quixo.N_ACTIONS)) - set(
                 game_quixo.possible_moves(cur_state, cur_player)
