@@ -1,136 +1,197 @@
-import collections
 import numpy as np
-import torch
-import torch.nn as nn
-from numpy.typing import NDArray
 import lib.game_quixo as game_quixo
 import lib.agents_quixo as agents_quixo
+from numpy.typing import NDArray
+from typing import Iterator
 
-OBS_SHAPE = (3, game_quixo.SIZE, game_quixo.SIZE)
-NUM_FILTERS = 64
-
-
-class Net(nn.Module):
-    def __init__(self, input_shape, actions_n):
-        super(Net, self).__init__()
-        self.input_shape = input_shape
-        self.actions_n = actions_n
-        self.conv_in = nn.Sequential(
-            nn.Conv2d(input_shape[0], NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU(),
-        )
-        self.conv_1 = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU(),
-        )
-        self.conv_2 = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU(),
-        )
-        self.conv_3 = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU(),
-        )
-        self.conv_4 = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU(),
-        )
-        self.conv_5 = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU(),
-        )
-
-        body_out_shape = (NUM_FILTERS,) + input_shape[1:]
-
-        self.conv_val = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, 1, kernel_size=1), nn.BatchNorm2d(1), nn.LeakyReLU()
-        )
-        conv_val_size = self._get_conv_val_size(body_out_shape)
-        self.value = nn.Sequential(
-            nn.Linear(conv_val_size, 20), nn.LeakyReLU(), nn.Linear(20, 1), nn.Tanh()
-        )
-
-        self.conv_policy = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, 2, kernel_size=1), nn.BatchNorm2d(2), nn.LeakyReLU()
-        )
-        conv_policy_size = self._get_conv_policy_size(body_out_shape)
-        self.policy = nn.Sequential(nn.Linear(conv_policy_size, actions_n))
-
-    def _get_conv_val_size(self, shape):
-        o = self.conv_val(torch.zeros(1, *shape))
-        return int(np.prod(o.size()))
-
-    def _get_conv_policy_size(self, shape):
-        o = self.conv_policy(torch.zeros(1, *shape))
-        return int(np.prod(o.size()))
-
-    def forward(self, x):
-        batch_size = x.size()[0]
-        v = self.conv_in(x)
-        v = v + self.conv_1(v)
-        v = v + self.conv_2(v)
-        v = v + self.conv_3(v)
-        v = v + self.conv_4(v)
-        v = v + self.conv_5(v)
-        val = self.conv_val(v)
-        val = self.value(val.view(batch_size, -1))
-        pol = self.conv_policy(v)
-        pol = self.policy(pol.view(batch_size, -1))
-        return pol, val
+QUINTUPLES = [
+    (0, 1, 2, 3, 4),
+    (5, 6, 7, 8, 9),
+    (10, 11, 12, 13, 14),
+    (15, 16, 17, 18, 19),
+    (20, 21, 22, 23, 24),
+    (0, 5, 10, 15, 20),
+    (1, 6, 11, 16, 21),
+    (2, 7, 12, 17, 22),
+    (3, 8, 13, 18, 23),
+    (4, 9, 14, 19, 24),
+    (0, 6, 12, 18, 24),
+    (4, 8, 12, 16, 20),
+]
 
 
-def encode_board_for_nn(dest_np: np.ndarray, state: NDArray[np.int8], player: int):
+def symmetric_boards(state: NDArray[np.int8]) -> Iterator[NDArray[np.int8]]:
     """
-    Encode a single board state into an array suitable for our neural network.
+    Generate basic Quixo symmetries.
 
     Args:
-        dest_np (np.ndarray): Target array of shape to store the neural network encoded state.
         state (NDArray[np.int8]): Array that represents a 5x5 Quixo board.
-        player (int): Integer representing the player (1 or -1).
+    Yields:
+        NDArray[np.int8]: A transformed board state (copy).
     """
-    assert dest_np.shape == OBS_SHAPE
-
-    for row_idx, row in enumerate(state):
-        for col_idx, cell in enumerate(row):
-            if cell == player:
-                dest_np[0, row_idx, col_idx] = 1.0
-            elif cell == -player:
-                dest_np[1, row_idx, col_idx] = 1.0
-            else:
-                dest_np[2, row_idx, col_idx] = 1.0
+    yield state
+    yield np.rot90(state, 1)
+    yield np.rot90(state, 2)
+    yield np.rot90(state, 3)
+    yield np.fliplr(state)
+    yield np.flipud(state)
 
 
-def states_to_tensor_batch(
-    state_list: list,
-    player_list: list,
-    device: torch.device = torch.device("cpu"),
-) -> torch.Tensor:
+def map_tuple_index(flat_board: NDArray[np.int8], positions: tuple[int, ...]) -> int:
     """
-    Encodes states to shape used in neural network and returns a tensor, in batch form.
+    Map a base-3 encoded index for an n-tuple pattern on a board.
 
     Args:
-        state_list (list): List of states.
-        player_list (list): List of players.
-        device (torch.device): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
+        flat_board (NDArray[np.int8]): 1D array that represents a 5x5 Quixo board.
+        positions (tuple[int, ...]): Tuple of indices into `flat_board` defining the n-tuple.
     Returns:
-        torch.Tensor: PyTorch tensor batch of encoded board states.
+        int: Base-3 encoded index representing the pattern at those positions.
     """
-    assert isinstance(state_list, list)
-    batch_size = len(state_list)
-    batch = np.zeros((batch_size,) + OBS_SHAPE, dtype=np.float32)
-    for idx, (state, player) in enumerate(zip(state_list, player_list)):
-        encode_board_for_nn(batch[idx], state, player)
-    return torch.tensor(batch).to(device)
+    idx = 0
+    for p in positions:
+        cell = flat_board[p]
+        if cell == -1:
+            digit = 0
+        elif cell == 0:
+            digit = 1
+        else:
+            digit = 2
+        idx = idx * 3 + digit
+
+    return idx
 
 
-def play_game(
-    replay_buffer: collections.deque | None,
+class NTuple:
+    def __init__(self, positions):
+        self.positions = positions
+        self.weights = np.zeros(3 ** len(positions), dtype=np.float32)
+        self.trace = np.zeros_like(self.weights)
+
+
+class NTupleNetwork:
+    def __init__(self):
+        self.tuples = [NTuple(t) for t in QUINTUPLES]
+
+    def evaluate(self, board):
+        flat = board.reshape(-1)
+        value = 0.0
+        for tup in self.tuples:
+            idx = map_tuple_index(flat, tup.positions)
+            value += tup.weights[idx]
+        return np.tanh(value)
+
+    def update(self, board, delta, alpha, gamma=0.99, lam=0.7):
+        flat = board.reshape(-1)
+        for tup in self.tuples:
+            tup.trace *= gamma * lam
+            idx = map_tuple_index(flat, tup.positions)
+            tup.trace[idx] += 1.0
+            tup.weights += alpha * delta * tup.trace
+
+
+def select_move_train(
+    net: NTupleNetwork, state: NDArray[np.int8], cur_player: int, epsilon: float = 0.1
+) -> int:
+    """
+    Selects a move using an epsilon-greedy policy with one-move lookahead evaluation.
+
+    The function either explores randomly with probability epsilon or selects the move that
+    maximises the network-evaluated value of the next state.
+
+    Args:
+        net (NTupleNetwork): N-tuple network that approximates the value function.
+        state (NDArray[np.int8]): Array that represents a 5x5 Quixo board.
+        cur_player (int): Integer representing the player (1 or -1).
+        epsilon (float): Probability of selecting a random legal move.
+
+    Returns:
+        int: Chosen action index.
+    """
+    legal_moves = game_quixo.possible_moves(state, cur_player)
+    if len(legal_moves) == 0:
+        raise ValueError("No legal moves available")
+    if np.random.random() < epsilon:
+        return int(np.random.choice(legal_moves))
+
+    best_move = legal_moves[0]
+    best_value = -999999
+
+    for move in legal_moves:
+        next_state, _ = game_quixo.move(state, move, cur_player)
+
+        value = net.evaluate(next_state)
+        if cur_player == -1:
+            value = -value
+
+        if value > best_value:
+            best_value = value
+            best_move = move
+
+    return best_move
+
+
+def play_game_train(
+    net: NTupleNetwork, alpha: float = 0.01, gamma: float = 0.99, epsilon: float = 0.1
+) -> tuple[int, int]:
+    """
+    Plays one self-play episode of Quixo using a TD-learning(λ) N-tuple network.
+
+    Args:
+        net (NTupleNetwork): N-tuple network that approximates the value function.
+        alpha (float): Learning rate for TD updates.
+        gamma (float): Discount factor for future rewards.
+        epsilon (float): Probability of selecting a random legal move.
+
+    Returns:
+        tuple[int, int]:
+            - Game result from the perspective of player 1:
+                1  → player 1 win
+               -1  → player -1 win
+                0  → draw
+            - Number of moves played in the episode
+    """
+    state = game_quixo.INITIAL_STATE.copy()
+    cur_player = int(np.random.choice([1, -1]))
+
+    move_count = 0
+
+    while True:
+        action = select_move_train(net, state, cur_player, epsilon)
+
+        if action is None:
+            return 0, move_count
+
+        next_state, won = game_quixo.move(state, action, cur_player)
+        reward = 0.0
+        if won == cur_player:
+            reward = 1.0
+        elif won == -cur_player:
+            reward = -1.0
+
+        terminal = won != 0
+
+        value = net.evaluate(state) * cur_player
+
+        if terminal:
+            next_value = 0.0
+        else:
+            next_value = net.evaluate(next_state) * (-cur_player)
+
+        target = reward + gamma * next_value
+        delta = target - value
+
+        for sym_state in symmetric_boards(state):
+            net.update(sym_state, delta, alpha, gamma=gamma)
+
+        if terminal:
+            return won, move_count + 1
+
+        state = next_state
+        cur_player *= -1
+        move_count += 1
+
+
+def play_game_full(
     agent1: (
         agents_quixo.MCTSAgent
         | agents_quixo.RandomAgent
@@ -150,8 +211,6 @@ def play_game(
     Simulates a single self-play game between two neural networks using MCTS.
 
     Args:
-        replay_buffer (collections.deque | None): Replay buffer storing (state, player, policy_probs, result) tuples.
-        Can be set as None to disable replay storage.
         agent1: The first agent. Can be an MCTSAgent or a heuristic-based agent.
         agent2: The second agent. Can be an MCTSAgent or a heuristic-based agent.
         moves_before_tau_0 (int): Number of moves at the start of the game for which temperature parameter is 1, before
@@ -162,13 +221,12 @@ def play_game(
         int: +1 if net1 wins, -1 if net2 wins, 0 for a draw.
         int: Total number of moves played in the game.
     """
-    assert isinstance(replay_buffer, (collections.deque, type(None)))
     assert isinstance(moves_before_tau_0, int) and moves_before_tau_0 >= 0
 
-    state = game_quixo.encode_board(game_quixo.INITIAL_STATE)
+    state = game_quixo.INITIAL_STATE
     agents = [agent1, agent2]
     if agent1_plays_first is None:
-        cur_player = np.random.choice([1, -1])
+        cur_player = int(np.random.choice([1, -1]))
     else:
         cur_player = 1 if agent1_plays_first else -1
     move = 0
@@ -194,7 +252,6 @@ def play_game(
         state, won = game_quixo.move(state, action, cur_player)
         if won == cur_player:
             print(f"Game won by {cur_player}!")
-            result = won
             if cur_player == 1:
                 net1_result = 1
             elif cur_player == -1:
@@ -202,7 +259,6 @@ def play_game(
             break
         elif won == -cur_player:
             print(f"Game won by {-cur_player}!")
-            result = -won
             if cur_player == 1:
                 net1_result = -1
             elif cur_player == -1:
@@ -210,16 +266,10 @@ def play_game(
             break
         cur_player = cur_player * -1
         if len(game_quixo.possible_moves(state, cur_player)) == 0:
-            result = 0
             net1_result = 0
             break
         move += 1
         if move >= moves_before_tau_0:
             tau = 0
-
-    if replay_buffer is not None:
-        for state, cur_player, probs in reversed(game_history):
-            replay_buffer.append((state, cur_player, probs, result))
-            result = -result
 
     return net1_result, move
