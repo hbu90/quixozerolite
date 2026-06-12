@@ -1,4 +1,3 @@
-import torch
 from dataclasses import dataclass
 import lib.model_quixo as model_quixo
 import lib.agents_quixo as agents_quixo
@@ -24,14 +23,16 @@ class TournamentPlayer:
     elo: float = 0.0
 
 
-def load_model(path: str, device: torch.device) -> torch.nn.Module:
-    net = model_quixo.Net(
-        input_shape=model_quixo.OBS_SHAPE,
-        actions_n=44,  # TO-DO update this hard-wired number
-    ).to(device)
+def load_model(path: str) -> model_quixo.NTupleNetwork:
+    net = model_quixo.NTupleNetwork()
 
-    net.load_state_dict(torch.load(path, map_location=device))
-    net.eval()
+    saved_weights = np.load(path, allow_pickle=True)
+
+    if len(saved_weights) != len(net.tuples):
+        raise ValueError("Saved model does not match tuple definition.")
+    for tup, weights in zip(net.tuples, saved_weights):
+        tup.weights[:] = weights
+
     return net
 
 
@@ -58,8 +59,7 @@ def play_matches(
     for game_idx in range(games):
         player_a_first = game_idx % 2 == 0
 
-        result, _ = model_quixo.play_game(
-            replay_buffer=None,
+        result, _ = model_quixo.play_game_full(
             agent1=player_a_agent,
             agent2=player_b_agent,
             moves_before_tau_0=0,
@@ -88,20 +88,17 @@ def win_ratio_from_results(results: list[tuple[str, str, float]]) -> float:
 def tournament(
     player_model_paths: list[str],
     games_per_pair: int = 15,
-    device: str = "cpu",
 ) -> list[tuple[str, str, float]]:
-    device = torch.device(device)
     players = []
 
     for path in player_model_paths:
         basename = os.path.basename(path)
-        net = load_model(path, device=device)
+        net = load_model(path)
         agent = agents_quixo.MCTSAgent(
             net,
             mcts_quixo.MCTS(),
             TOURNAMENT_MCTS_ITERATIONS,
             TOURNAMENT_MCTS_SIMULATION_SIZE,
-            device,
         )
         players.append(
             TournamentPlayer(name=os.path.splitext(basename)[0], agent=agent)
@@ -199,15 +196,12 @@ def offline_elo(
 
 if __name__ == "__main__":
     model_paths = [
-        "saves/20260414/best_001_00005.dat",
-        "saves/20260414/best_002_00020.dat",
-        "saves/test_run/best_001_00015.dat",
+        "saves/20260611/ntuple_step_10.npy",
     ]
 
     tournament_results = tournament(
         player_model_paths=model_paths,
         games_per_pair=2,
-        device="cpu",
     )
 
     print(tournament_results)

@@ -1,6 +1,7 @@
 import random
 from dataclasses import dataclass
 import numpy as np
+from numpy.typing import NDArray
 from lib import game_quixo
 
 
@@ -9,9 +10,9 @@ class RandomAgent:
     name: str = "random"
 
     @staticmethod
-    def select_action(state_int: int, player: int) -> int:
-        legal_moves = game_quixo.possible_moves(state_int, player)
-        return random.choice(legal_moves)
+    def select_action(state: NDArray[np.int8], player: int) -> int:
+        legal_moves = game_quixo.possible_moves(state, player)
+        return int(random.choice(legal_moves))
 
 
 @dataclass
@@ -24,15 +25,15 @@ class GreedyWinAgent:
     name: str = "greedy_win"
 
     @staticmethod
-    def select_action(state_int: int, player: int) -> int:
-        legal_moves = game_quixo.possible_moves(state_int, player)
+    def select_action(state: NDArray[np.int8], player: int) -> int:
+        legal_moves = game_quixo.possible_moves(state, player)
 
         for action in legal_moves:
-            new_state, won = game_quixo.move(state_int, action, player)
+            new_state, won = game_quixo.move(state, action, player)
             if won == player:
                 return action
 
-        return random.choice(legal_moves)
+        return int(random.choice(legal_moves))
 
 
 @dataclass
@@ -47,17 +48,17 @@ class WinBlockAgent:
     name: str = "win_block"
 
     @staticmethod
-    def select_action(state_int: int, player: int) -> int:
-        legal_moves = game_quixo.possible_moves(state_int, player)
+    def select_action(state: NDArray[np.int8], player: int) -> int:
+        legal_moves = game_quixo.possible_moves(state, player)
 
         for action in legal_moves:
-            new_state, won = game_quixo.move(state_int, action, player)
+            new_state, won = game_quixo.move(state, action, player)
             if won == player:
                 return action
 
         opp = -player
         for action in legal_moves:
-            new_state, won = game_quixo.move(state_int, action, player)
+            new_state, won = game_quixo.move(state, action, player)
 
             opp_legal = game_quixo.possible_moves(new_state, opp)
             for opp_action in opp_legal:
@@ -65,21 +66,22 @@ class WinBlockAgent:
                 if opp_won == opp:
                     return action
 
-        return random.choice(legal_moves)
+        return int(random.choice(legal_moves))
 
 
 class MCTSAgent:
-    def __init__(self, net, mcts, n_iters, n_sims, device="cpu"):
+    def __init__(self, net, mcts, n_iters, n_sims):
         self.net = net
         self.mcts = mcts
         self.n_iters = n_iters
         self.n_sims = n_sims
-        self.device = device
         self.name = "mcts_net"
 
     def select_action(
-        self, state_int: int, player: int, tau: float = 1.0
+        self, state: NDArray[np.int8], player: int, tau: float = 1.0
     ) -> tuple[int, np.ndarray]:
+
+        state_int = game_quixo.encode_board(state)
 
         self.mcts.run_mcts(
             n_iterations=self.n_iters,
@@ -87,21 +89,20 @@ class MCTSAgent:
             state_int=state_int,
             player=player,
             net=self.net,
-            device=self.device,
         )
 
         probs, _ = self.mcts.get_policy_value(state_int, tau=tau)
 
-        legal_moves = game_quixo.possible_moves(state_int, player)
+        legal_moves = game_quixo.possible_moves(state, player)
         mask = np.zeros(game_quixo.N_ACTIONS)
         mask[legal_moves] = 1
         probs = np.array(probs, dtype=np.float32)
 
         legal_probs = probs * mask
         if legal_probs.sum() == 0:
-            action = np.random.choice(legal_moves)
+            action = int(np.random.choice(legal_moves))
         else:
             legal_probs /= legal_probs.sum()
-            action = np.random.choice(game_quixo.N_ACTIONS, p=legal_probs)
+            action = int(np.random.choice(game_quixo.N_ACTIONS, p=legal_probs))
 
         return action, probs
