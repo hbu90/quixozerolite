@@ -2,13 +2,9 @@ import math as m
 from typing import Any
 
 import numpy as np
-import torch
-
 import lib.game_quixo as game_quixo
 import lib.model_quixo as model_quixo
 
-import torch.nn.functional as functional
-import torch.nn as nn
 
 DIRICHLET_EPSILON = 0.25
 
@@ -98,14 +94,18 @@ class MCTS:
                 )
             ]
             invalid_actions = set(range(game_quixo.N_ACTIONS)) - set(
-                game_quixo.possible_moves(cur_state, cur_player)
+                game_quixo.possible_moves(
+                    game_quixo.decode_board(state_int), cur_player
+                )
             )
             for invalid in invalid_actions:
                 score[invalid] = -np.inf
             action = int(np.argmax(score))
             actions.append(action)
             # Transition to the next state using best action
-            cur_state, won = game_quixo.move(cur_state, action, cur_player)
+            cur_state, won = game_quixo.move(
+                game_quixo.decode_board(state_int), action, cur_player
+            )
             if won == cur_player:
                 value = 1.0
                 break
@@ -117,6 +117,7 @@ class MCTS:
             # If no moves left, then it is a draw
             if value is None and moves_count == 0:
                 value = 0.0
+            cur_state = game_quixo.encode_board(cur_state)
 
         return value, cur_state, cur_player, states, actions
 
@@ -126,8 +127,7 @@ class MCTS:
         n_simulations: int,
         state_int: int,
         player: int,
-        net: nn.Module,
-        device: torch.device = torch.device("cpu"),
+        net: model_quixo.NTupleNetwork,
     ):
         """
         Run MCTS simulations from a given game state.
@@ -137,19 +137,17 @@ class MCTS:
             n_simulations (int): Number of MCTS simulations to batch together.
             state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
             player (int): Integer representing the player (1 or -1).
-            net (nn.Module): Neural network that predicts policy and value.
-            device (torch.device): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
+            net (model_quixo.NTupleNetwork): TD network that predicts value.
         """
         for step in range(n_iterations):
-            self.mcts_simulations_batch(n_simulations, state_int, player, net, device)
+            self.mcts_simulations_batch(n_simulations, state_int, player, net)
 
     def mcts_simulations_batch(
         self,
         n_simulations: int,
         state_int: int,
         player: int,
-        net: nn.Module,
-        device: torch.device = torch.device("cpu"),
+        net: model_quixo.NTupleNetwork,
     ):
         """
         Perform multiple MCTS simulations per call.
@@ -158,8 +156,7 @@ class MCTS:
             n_simulations (int): Number of MCTS simulations to batch together.
             state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
             player (int): Integer representing the player (1 or -1).
-            net (nn.Module): Neural network that predicts policy and value.
-            device (torch.device): Device to run neural network inference on ("cpu" or "cuda"). Defaults to "cpu".
+            net (model_quixo.NTupleNetwork): TD network that predicts value.
         """
         backup_queue = []
         expand_states = []  # States to be evaluated by neural network
@@ -183,34 +180,39 @@ class MCTS:
                     expand_players.append(leaf_player)
                     expand_queue.append((leaf_state, leaf_player, states, actions))
 
-        # Expand nodes using neural network
+        # Expand nodes using TD network
         if expand_queue:
-            with torch.no_grad():
-                batch_v = model_quixo.states_to_tensor_batch(
-                    expand_states, expand_players, device
-                )
-                logits_v, values_v = net(batch_v)
-                probs_v = functional.softmax(logits_v, dim=1)
-                values = values_v.data.cpu().numpy()[:, 0]
-                probs = probs_v.data.cpu().numpy()
+            values = []
+
+            for state, player in zip(expand_states, expand_players):
+                v = net.evaluate(state)
+                values.append(v)
 
             # Create nodes
-            for (leaf_state, leaf_player, states, actions), value, prob in zip(
-                expand_queue, values, probs
+            for (leaf_state, leaf_player, states, actions), value in zip(
+                expand_queue, values
             ):
                 self.visit_count[leaf_state] = [0] * game_quixo.N_ACTIONS
                 self.value[leaf_state] = [0.0] * game_quixo.N_ACTIONS
                 self.value_avg[leaf_state] = [0.0] * game_quixo.N_ACTIONS
 
-                legal_moves = game_quixo.possible_moves(leaf_state, leaf_player)
-                mask = np.zeros(game_quixo.N_ACTIONS)
-                mask[legal_moves] = 1
-                prob = prob * mask
-                if prob.sum() > 0:
-                    prob /= prob.sum()
-                else:
-                    prob = mask / mask.sum()
-                self.probs[leaf_state] = prob
+                legal_moves = game_quixo.possible_moves(
+                    game_quixo.decode_board(leaf_state), leaf_player
+                )
+
+                # TO-DO - Use softmax from model?
+                prior = np.zeros(game_quixo.N_ACTIONS, dtype=np.float32)
+                prior[legal_moves] = 1.0 / len(legal_moves)
+                self.probs[leaf_state] = prior
+
+                # mask = np.zeros(game_quixo.N_ACTIONS)
+                # mask[legal_moves] = 1
+                # prob = prob * mask
+                # if prob.sum() > 0:
+                #     prob /= prob.sum()
+                # else:
+                #     prob = mask / mask.sum()
+                # self.probs[leaf_state] = prob
 
                 backup_queue.append((value, states, actions))
 
