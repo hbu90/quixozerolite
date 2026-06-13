@@ -6,6 +6,7 @@ import os
 import json
 import random
 import numpy as np
+from pathlib import Path
 
 TOURNAMENT_MCTS_ITERATIONS = 10
 TOURNAMENT_MCTS_SIMULATION_SIZE = 4
@@ -195,9 +196,7 @@ def offline_elo(
 
 
 if __name__ == "__main__":
-    model_paths = [
-        "saves/20260611/ntuple_step_10.npy",
-    ]
+    model_paths = [str(p) for p in Path("saves/20260613").glob("*.npy")]
 
     tournament_results = tournament(
         player_model_paths=model_paths,
