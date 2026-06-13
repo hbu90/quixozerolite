@@ -4,7 +4,7 @@ import lib.agents_quixo as agents_quixo
 from numpy.typing import NDArray
 from typing import Iterator
 
-QUINTUPLES = [
+TUPLES = [
     (0, 1, 2, 3, 4),
     (5, 6, 7, 8, 9),
     (10, 11, 12, 13, 14),
@@ -17,6 +17,38 @@ QUINTUPLES = [
     (4, 9, 14, 19, 24),
     (0, 6, 12, 18, 24),
     (4, 8, 12, 16, 20),
+
+    (0, 1, 6, 11),
+    (1, 2, 7, 6),
+    (2, 3, 8, 13),
+    (3, 4, 9, 8),
+    (5, 6, 11, 16),
+    (6, 7, 12, 11),
+    (7, 8, 13, 18),
+    (8, 9, 14, 13),
+    (10, 11, 6, 7),
+    (11, 12, 7, 8),
+    (12, 13, 8, 9),
+    (13, 14, 9, 8),
+    (15, 16, 11, 6),
+    (16, 17, 12, 11),
+    (17, 18, 13, 12),
+    (18, 19, 14, 13),
+    (20, 21, 16, 11),
+    (21, 22, 17, 16),
+    (22, 23, 18, 17),
+    (23, 24, 19, 18),
+    (0, 5, 6, 11),
+    (4, 9, 8, 13),
+    (20, 15, 16, 11),
+    (24, 19, 18, 13),
+    (1, 6, 7, 12),
+    (2, 7, 8, 13),
+    (3, 8, 13, 18),
+    (10, 5, 6, 7),
+    (14, 9, 8, 7),
+    (15, 10, 11, 12),
+    (19, 14, 13, 12),
 ]
 
 
@@ -70,7 +102,7 @@ class NTuple:
 
 class NTupleNetwork:
     def __init__(self):
-        self.tuples = [NTuple(t) for t in QUINTUPLES]
+        self.tuples = [NTuple(t) for t in TUPLES]
 
     def evaluate(self, board):
         flat = board.reshape(-1)
@@ -167,7 +199,6 @@ def play_game_train(
             reward = 1.0
         elif won == -cur_player:
             reward = -1.0
-
         terminal = won != 0
 
         value = net.evaluate(state) * cur_player
