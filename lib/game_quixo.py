@@ -2,6 +2,8 @@ import numpy as np
 from typing import List
 from numpy.typing import NDArray
 from functools import lru_cache
+from numba import njit
+
 
 SIZE = 5
 PLAYER_X = 1
@@ -111,6 +113,7 @@ def decode_board(value: int) -> NDArray[np.int8]:
     return np.array(cells, dtype=np.int8).reshape(5, 5)
 
 
+@njit(cache=True)
 def check_won(state: NDArray[np.int8]) -> int:
     """
     Checks if any of players have 5 in a row of their symbol, either horizontally, diagonally, or vertically.
@@ -121,26 +124,34 @@ def check_won(state: NDArray[np.int8]) -> int:
         int: Integer representing either a winner (1 or -1 for different players) or 0 for no win found.
     """
     for r in range(SIZE):
-        row_sum = sum(state[r])
+        row_sum = 0
+        for c in range(SIZE):
+            row_sum += state[r][c]
         if row_sum == SIZE:
             return 1
         if row_sum == -SIZE:
             return -1
 
     for c in range(SIZE):
-        col_sum = sum(state[r][c] for r in range(SIZE))
+        col_sum = 0
+        for r in range(SIZE):
+            col_sum += state[r][c]
         if col_sum == SIZE:
             return 1
         if col_sum == -SIZE:
             return -1
 
-    diagonal_sum = sum(state[i][i] for i in range(SIZE))
+    diagonal_sum = 0
+    for i in range(SIZE):
+        diagonal_sum += state[i][i]
     if diagonal_sum == SIZE:
         return 1
     if diagonal_sum == -SIZE:
         return -1
 
-    anti_diagonal_sum = sum(state[i][SIZE - 1 - i] for i in range(SIZE))
+    anti_diagonal_sum = 0
+    for i in range(SIZE):
+        anti_diagonal_sum += state[i][SIZE - 1 - i]
     if anti_diagonal_sum == SIZE:
         return 1
     if anti_diagonal_sum == -SIZE:

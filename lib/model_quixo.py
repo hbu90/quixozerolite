@@ -3,6 +3,7 @@ import lib.game_quixo as game_quixo
 import lib.agents_quixo as agents_quixo
 from numpy.typing import NDArray
 from typing import Iterator
+from numba import njit
 
 TUPLES = [
     (0, 1, 2, 3, 4),
@@ -68,6 +69,7 @@ def symmetric_boards(state: NDArray[np.int8]) -> Iterator[NDArray[np.int8]]:
     yield np.flipud(state)
 
 
+@njit(cache=True)
 def map_tuple_index(flat_board: NDArray[np.int8], positions: tuple[int, ...]) -> int:
     """
     Map a base-3 encoded index for an n-tuple pattern on a board.

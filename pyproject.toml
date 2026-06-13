@@ -13,6 +13,7 @@ tqdm = "^4.67.3"
 pygame = "^2.6.1"
 charset-normalizer = "^3.4.5"
 setuptools = "68.2.2"
+numba = "^0.65.1"
 
 
 [build-system]
