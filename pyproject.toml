@@ -9,10 +9,7 @@ package-mode = false
 [tool.poetry.dependencies]
 python = ">=3.11,<3.12"
 numpy = "<2"
-torch = "2.5.0"
-tensorboardx = "^2.6.4"
 tqdm = "^4.67.3"
-tensorboard = "^2.20.0"
 pygame = "^2.6.1"
 charset-normalizer = "^3.4.5"
 setuptools = "68.2.2"
