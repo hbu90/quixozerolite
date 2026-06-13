@@ -6,33 +6,21 @@ from tqdm import tqdm
 
 from lib import model_quixo
 
-import torch
-from torch.utils.tensorboard import SummaryWriter
-
 
 MAX_STEPS = 20
-LEARNING_RATE = 0.01
+LEARNING_RATE = 0.2
 GAMMA = 0.99
 EPSILON = 0.1
 PLAY_EPISODES = 25
-EVALUATE_EVERY_STEP = 5
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--name", required=True, help="Name of the run")
-    parser.add_argument(
-        "--cuda", default=False, action="store_true", help="Enable CUDA"
-    )
     args = parser.parse_args()
-    if args.cuda and torch.cuda.is_available():
-        train_device = torch.device("cuda")
-    else:
-        train_device = torch.device("cpu")
 
     saves_path = os.path.join("saves", args.name)
     os.makedirs(saves_path, exist_ok=True)
-    writer = SummaryWriter(comment="-" + args.name)
 
     net = model_quixo.NTupleNetwork()
     step_idx = 0
@@ -60,13 +48,12 @@ if __name__ == "__main__":
         moves_per_second = total_game_moves / dt
         avg_game_moves = total_game_moves / PLAY_EPISODES
         avg_winner_count = winner_count / PLAY_EPISODES
-        writer.add_scalar("moves_per_second", moves_per_second, step_idx)
-        writer.add_scalar("avg_game_moves", avg_game_moves, step_idx)
-        writer.add_scalar("avg_winner_count", avg_winner_count, step_idx)
 
         if step_idx % 10 == 0:
             save_path = os.path.join(saves_path, f"td_agent_step_{step_idx}.npy")
-            np.save(save_path, [tup.weights for tup in net.tuples])
+            np.save(
+                save_path, np.array(list(net.tuples), dtype=object), allow_pickle=True
+            )
 
             print(f"Saved to {save_path}")
 
