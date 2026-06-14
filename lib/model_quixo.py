@@ -5,51 +5,50 @@ from numpy.typing import NDArray
 from typing import Iterator
 from numba import njit
 
-TUPLES = [
-    (0, 1, 2, 3, 4),
-    (5, 6, 7, 8, 9),
-    (10, 11, 12, 13, 14),
-    (15, 16, 17, 18, 19),
-    (20, 21, 22, 23, 24),
-    (0, 5, 10, 15, 20),
-    (1, 6, 11, 16, 21),
-    (2, 7, 12, 17, 22),
-    (3, 8, 13, 18, 23),
-    (4, 9, 14, 19, 24),
-    (0, 6, 12, 18, 24),
-    (4, 8, 12, 16, 20),
-    (0, 1, 6, 11),
-    (1, 2, 7, 6),
-    (2, 3, 8, 13),
-    (3, 4, 9, 8),
-    (5, 6, 11, 16),
-    (6, 7, 12, 11),
-    (7, 8, 13, 18),
-    (8, 9, 14, 13),
-    (10, 11, 6, 7),
-    (11, 12, 7, 8),
-    (12, 13, 8, 9),
-    (13, 14, 9, 8),
-    (15, 16, 11, 6),
-    (16, 17, 12, 11),
-    (17, 18, 13, 12),
-    (18, 19, 14, 13),
-    (20, 21, 16, 11),
-    (21, 22, 17, 16),
-    (22, 23, 18, 17),
-    (23, 24, 19, 18),
-    (0, 5, 6, 11),
-    (4, 9, 8, 13),
-    (20, 15, 16, 11),
-    (24, 19, 18, 13),
-    (1, 6, 7, 12),
-    (2, 7, 8, 13),
-    (3, 8, 13, 18),
-    (10, 5, 6, 7),
-    (14, 9, 8, 7),
-    (15, 10, 11, 12),
-    (19, 14, 13, 12),
-]
+
+def generate_tuples():
+    tuples = set()
+
+    def add(t):
+        tuples.add(tuple(t))
+
+    for r in range(5):
+        add([r * 5 + i for i in range(5)])
+    for c in range(5):
+        add([c + 5 * i for i in range(5)])
+
+    add([i * 6 for i in range(5)])
+    add([4 + i * 4 for i in range(5)])
+
+    for r in range(3):
+        for c in range(3):
+            base = r * 5 + c
+            block = [
+                base + 0,
+                base + 1,
+                base + 2,
+                base + 5,
+                base + 6,
+                base + 7,
+                base + 10,
+                base + 11,
+                base + 12,
+            ]
+            add(block)
+
+    for r in range(4):
+        for c in range(4):
+            base = r * 5 + c
+            add([base, base + 1, base + 5, base + 6])
+
+    offsets = [(0, 6, 12, 18), (2, 6, 10, 14), (0, 4, 20, 24)]
+    for pattern in offsets:
+        add(pattern)
+
+    return sorted(list(tuples))
+
+
+TUPLES = generate_tuples()
 
 
 def symmetric_boards(state: NDArray[np.int8]) -> Iterator[NDArray[np.int8]]:
@@ -121,6 +120,10 @@ class NTupleNetwork:
             tup.trace[idx] += 1.0
             tup.weights += alpha * delta * tup.trace
 
+    def reset_traces(self):
+        for tup in self.tuples:
+            tup.trace.fill(0)
+
 
 def select_move_train(
     net: NTupleNetwork, state: NDArray[np.int8], cur_player: int, epsilon: float = 0.1
@@ -147,18 +150,21 @@ def select_move_train(
         return int(np.random.choice(legal_moves))
 
     best_move = legal_moves[0]
-    best_value = -999999
+    best_value = -999999 * cur_player
 
     for move in legal_moves:
         next_state, _ = game_quixo.move(state, move, cur_player)
 
         value = net.evaluate(next_state)
-        if cur_player == -1:
-            value = -value
 
-        if value > best_value:
-            best_value = value
-            best_move = move
+        if cur_player == 1:
+            if value > best_value:
+                best_value = value
+                best_move = move
+        if cur_player == -1:
+            if value < best_value:
+                best_value = value
+                best_move = move
 
     return best_move
 
@@ -183,37 +189,31 @@ def play_game_train(
                 0  → draw
             - Number of moves played in the episode
     """
+    net.reset_traces()
     state = game_quixo.INITIAL_STATE.copy()
     cur_player = int(np.random.choice([1, -1]))
-
-    move_count = 0
+    action = select_move_train(net, state, cur_player, epsilon)
+    next_state, won = game_quixo.move(state, action, cur_player)
+    state = next_state
+    cur_player *= -1
+    move_count = 1
 
     while True:
         action = select_move_train(net, state, cur_player, epsilon)
-
-        if action is None:
-            return 0, move_count
-
         next_state, won = game_quixo.move(state, action, cur_player)
         reward = 0.0
-        if won == cur_player:
-            reward = 1.0
-        elif won == -cur_player:
-            reward = -1.0
         terminal = won != 0
+        if terminal:
+            reward = won
 
-        value = net.evaluate(state) * cur_player
-
+        value = net.evaluate(state)
         if terminal:
             next_value = 0.0
         else:
-            next_value = net.evaluate(next_state) * (-cur_player)
+            next_value = net.evaluate(next_state)
 
-        target = reward + gamma * next_value
-        delta = target - value
-
-        for sym_state in symmetric_boards(state):
-            net.update(sym_state, delta, alpha, gamma=gamma)
+        delta = (reward + gamma * next_value) - value
+        net.update(state, delta, alpha, gamma=gamma)
 
         if terminal:
             return won, move_count + 1
