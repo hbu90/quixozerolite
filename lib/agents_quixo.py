@@ -81,19 +81,27 @@ class MCTSAgent:
         self, state: NDArray[np.int8], player: int, tau: float = 1.0
     ) -> tuple[int, np.ndarray]:
 
-        state_int = game_quixo.encode_board(state)
+        state_copy = state.copy()
+        player_copy = player
+
+        # Flip board due to way TD network was trained
+        if player == -1:
+            state_copy *= -1
+            player_copy *= -1
+
+        state_int = game_quixo.encode_board(state_copy)
 
         self.mcts.run_mcts(
             n_iterations=self.n_iters,
             n_simulations=self.n_sims,
             state_int=state_int,
-            player=player,
+            player=player_copy,
             net=self.net,
         )
 
         probs, _ = self.mcts.get_policy_value(state_int, tau=tau)
 
-        legal_moves = game_quixo.possible_moves(state, player)
+        legal_moves = game_quixo.possible_moves(state_copy, player_copy)
         mask = np.zeros(game_quixo.N_ACTIONS)
         mask[legal_moves] = 1
         probs = np.array(probs, dtype=np.float32)
