@@ -7,6 +7,7 @@ import json
 import random
 import numpy as np
 from pathlib import Path
+import csv
 
 TOURNAMENT_MCTS_ITERATIONS = 10
 TOURNAMENT_MCTS_SIMULATION_SIZE = 4
@@ -27,12 +28,13 @@ class TournamentPlayer:
 def load_model(path: str) -> model_quixo.NTupleNetwork:
     net = model_quixo.NTupleNetwork()
 
-    saved_weights = np.load(path, allow_pickle=True)
+    saved = np.load(path, allow_pickle=True)
 
-    if len(saved_weights) != len(net.tuples):
-        raise ValueError("Saved model does not match tuple definition.")
-    for tup, weights in zip(net.tuples, saved_weights):
-        tup.weights[:] = weights
+    for tup, saved_tup in zip(net.tuples, saved):
+        if hasattr(saved_tup, "weights"):
+            tup.weights[:] = saved_tup.weights
+        else:
+            tup.weights[:] = saved_tup
 
     return net
 
@@ -58,7 +60,14 @@ def play_matches(
     results = []
 
     for game_idx in range(games):
+        print(f"  Game {game_idx + 1}/{games}")
         player_a_first = game_idx % 2 == 0
+
+        if isinstance(player_a_agent, agents_quixo.MCTSAgent):
+            player_a_agent.mcts.clear()
+
+        if isinstance(player_b_agent, agents_quixo.MCTSAgent):
+            player_b_agent.mcts.clear()
 
         result, _ = model_quixo.play_game_full(
             agent1=player_a_agent,
@@ -123,9 +132,13 @@ def tournament(
         m1 = players[i]
         m2 = players[j]
 
+        print(f"\nStarting {m1.name} vs {m2.name}")
+
         m1_v_m2_results = play_matches(
             m1.agent, m2.agent, m1.name, m2.name, games=games_per_pair
         )
+
+        print(f"Finished {m1.name} vs {m2.name}")
 
         game_results.extend(m1_v_m2_results)
 
@@ -196,14 +209,16 @@ def offline_elo(
 
 
 if __name__ == "__main__":
-    model_paths = [str(p) for p in Path("saves/20260613").glob("*.npy")]
+    model_paths = [str(p) for p in Path("saves/20260614").glob("*.npy")]
 
     tournament_results = tournament(
         player_model_paths=model_paths,
-        games_per_pair=2,
+        games_per_pair=15,
     )
 
-    print(tournament_results)
+    with open('tournament_results.csv', 'w') as csvfile:
+        csvwriter = csv.writer(csvfile, delimiter=',')
+        csvwriter.writerows(tournament_results)
 
     offline_elo_ratings = offline_elo(tournament_results, n_shuffles=20, k=32)
 
