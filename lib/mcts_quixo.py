@@ -95,7 +95,7 @@ class MCTS:
             ]
             invalid_actions = set(range(game_quixo.N_ACTIONS)) - set(
                 game_quixo.possible_moves(
-                    game_quixo.decode_board(state_int), cur_player
+                    game_quixo.decode_board(cur_state), cur_player
                 )
             )
             for invalid in invalid_actions:
@@ -104,7 +104,7 @@ class MCTS:
             actions.append(action)
             # Transition to the next state using best action
             cur_state, won = game_quixo.move(
-                game_quixo.decode_board(state_int), action, cur_player
+                game_quixo.decode_board(cur_state), action, cur_player
             )
             if won == cur_player:
                 value = 1.0
