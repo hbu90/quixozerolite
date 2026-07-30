@@ -48,9 +48,7 @@ if __name__ == "__main__":
 
         if step_idx % SAVE_EVERY_N_STEPS == 0:
             save_path = os.path.join(saves_path, f"td_agent_step_{step_idx}.npy")
-            np.save(
-                save_path, np.array(list(net.tuples), dtype=object), allow_pickle=True
-            )
+            np.save(save_path, [tup.weights for tup in net.tuples])
             print(f"Saved model → {save_path}")
 
         step_idx += 1
