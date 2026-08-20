@@ -7,12 +7,12 @@ from tqdm import tqdm
 from lib import model_quixo
 
 
-MAX_STEPS = 10_000
+MAX_STEPS = 4_000
 LEARNING_RATE = 0.2
 GAMMA = 0.99
-EPSILON = 0.1
+EPSILON_DECAY_FACTOR = 1
 PLAY_EPISODES = 25
-SAVE_EVERY_N_STEPS = 500
+SAVE_EVERY_N_STEPS = 250
 
 
 if __name__ == "__main__":
@@ -32,9 +32,14 @@ if __name__ == "__main__":
         total_game_moves = 0
         winner_count = 0
 
+        EPSILON_DECAY_FACTOR *= 0.999
+
         for _ in tqdm(range(PLAY_EPISODES)):
             result, moves = model_quixo.play_game_train(
-                net, alpha=LEARNING_RATE, gamma=GAMMA, epsilon=EPSILON
+                net,
+                alpha=LEARNING_RATE,
+                gamma=GAMMA,
+                epsilon_decay=EPSILON_DECAY_FACTOR,
             )
 
             total_game_moves += moves
@@ -47,8 +52,14 @@ if __name__ == "__main__":
         print(f"Time: {dt:.2f}s")
 
         if step_idx % SAVE_EVERY_N_STEPS == 0:
-            save_path = os.path.join(saves_path, f"td_agent_step_{step_idx}.npy")
-            np.save(save_path, [tup.weights for tup in net.tuples])
+            save_path = os.path.join(saves_path, f"td_agent_step_{step_idx}.npz")
+            save_data = {}
+
+            for i, tup in enumerate(net.tuples):
+                save_data[f"tuple_{i}_weights"] = tup.weights
+                save_data[f"tuple_{i}_positions"] = np.array(tup.positions)
+
+            np.savez(save_path, **save_data)
             print(f"Saved model → {save_path}")
 
         step_idx += 1
