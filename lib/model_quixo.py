@@ -4,9 +4,61 @@ import lib.agents_quixo as agents_quixo
 from numpy.typing import NDArray
 from typing import Iterator
 from numba import njit
+import random
 
 
-def generate_tuples():
+GREEDY_WIN_AGENT_PROB = 0.25
+
+
+def generate_random_walk(length, rng):
+    neighbours = {}
+
+    for r in range(5):
+        for c in range(5):
+            idx = r * 5 + c
+            adjacent = []
+
+            for dr, dc in [
+                (-1, 0),
+                (1, 0),
+                (0, -1),
+                (0, 1),
+                (-1, -1),
+                (-1, 1),
+                (1, -1),
+                (1, 1),
+            ]:
+                rr = r + dr
+                cc = c + dc
+
+                if 0 <= rr < 5 and 0 <= cc < 5:
+                    adjacent.append(rr * 5 + cc)
+
+            neighbours[idx] = adjacent
+
+    start = rng.randint(0, 24)
+    walk = [start]
+
+    while len(walk) < length:
+        current = walk[-1]
+
+        candidates = [
+            position for position in neighbours[current] if position not in walk
+        ]
+
+        if not candidates:
+            return None
+
+        walk.append(rng.choice(candidates))
+
+    return tuple(walk)
+
+
+def generate_tuples(
+    n_random_6=800,
+    n_random_7=1200,
+    seed=42,
+):
     tuples = set()
 
     def add(t):
@@ -14,6 +66,7 @@ def generate_tuples():
 
     for r in range(5):
         add([r * 5 + i for i in range(5)])
+
     for c in range(5):
         add([c + 5 * i for i in range(5)])
 
@@ -23,32 +76,54 @@ def generate_tuples():
     for r in range(3):
         for c in range(3):
             base = r * 5 + c
-            block = [
-                base + 0,
-                base + 1,
-                base + 2,
-                base + 5,
-                base + 6,
-                base + 7,
-                base + 10,
-                base + 11,
-                base + 12,
-            ]
-            add(block)
+            add(
+                [
+                    base,
+                    base + 1,
+                    base + 2,
+                    base + 5,
+                    base + 6,
+                    base + 7,
+                    base + 10,
+                    base + 11,
+                    base + 12,
+                ]
+            )
 
     for r in range(4):
         for c in range(4):
             base = r * 5 + c
             add([base, base + 1, base + 5, base + 6])
 
-    offsets = [(0, 6, 12, 18), (2, 6, 10, 14), (0, 4, 20, 24)]
+    offsets = [
+        (0, 6, 12, 18),
+        (2, 6, 10, 14),
+        (0, 4, 20, 24),
+    ]
+
     for pattern in offsets:
         add(pattern)
 
-    return sorted(list(tuples))
+    rng = np.random.RandomState(seed)
+    target_random = n_random_6 + n_random_7
+    while len(tuples) < 40 + target_random:
+        if len(tuples) < 40 + n_random_6:
+            length = 6
+        else:
+            length = 7
+
+        walk = generate_random_walk(length, rng)
+        if walk is not None:
+            add(walk)
+
+    return sorted(tuples)
 
 
-TUPLES = generate_tuples()
+TUPLES = generate_tuples(
+    n_random_6=150,
+    n_random_7=250,
+    seed=42,
+)
 
 
 def symmetric_boards(state: NDArray[np.int8]) -> Iterator[NDArray[np.int8]]:
@@ -93,6 +168,30 @@ def map_tuple_index(flat_board: NDArray[np.int8], positions: tuple[int, ...]) ->
     return idx
 
 
+def perspective_state(
+    state: NDArray[np.int8],
+    cur_player: int,
+) -> NDArray[np.int8]:
+    """
+    Convert a board into the perspective of `player`.
+
+    The network always evaluates positions with the current player
+    represented by +1.
+
+    Args:
+        state (NDArray[np.int8]): Array that represents a 5x5 Quixo board.
+        cur_player (int): Integer representing the player (1 or -1).
+    Returns:
+        Board represented from the current player's perspective.
+    """
+    assert cur_player in (game_quixo.PLAYER_X, game_quixo.PLAYER_O)
+
+    if cur_player == game_quixo.PLAYER_X:
+        return state.copy()
+
+    return (-state).astype(np.int8)
+
+
 class NTuple:
     def __init__(self, positions):
         self.positions = positions
@@ -118,18 +217,32 @@ class NTupleNetwork:
             tup.trace *= gamma * lam
             idx = map_tuple_index(flat, tup.positions)
             tup.trace[idx] += 1.0
-            tup.weights += alpha * delta * tup.trace
+            nonzero = tup.trace != 0
+            tup.weights[nonzero] += alpha * delta * tup.trace[nonzero]
 
     def reset_traces(self):
         for tup in self.tuples:
             tup.trace.fill(0)
 
+    def evaluate_for_player(
+        self,
+        board: NDArray[np.int8],
+        cur_player: int,
+    ) -> float:
+        """
+        Evaluate a board from the perspective of `player`.
+
+        The network always sees the current player as +1.
+        """
+        board_perspective = perspective_state(board, cur_player)
+        return self.evaluate(board_perspective)
+
 
 def select_move_train(
-    net: NTupleNetwork, state: NDArray[np.int8], cur_player: int, epsilon: float = 0.1
+    net: NTupleNetwork, state: NDArray[np.int8], cur_player: int, epsilon_decay: float
 ) -> int:
     """
-    Selects a move using an epsilon-greedy policy with one-move lookahead evaluation.
+    Selects a move using an epsilon-greedy approach with one-move lookahead evaluation.
 
     The function either explores randomly with probability epsilon or selects the move that
     maximises the network-evaluated value of the next state.
@@ -138,11 +251,12 @@ def select_move_train(
         net (NTupleNetwork): N-tuple network that approximates the value function.
         state (NDArray[np.int8]): Array that represents a 5x5 Quixo board.
         cur_player (int): Integer representing the player (1 or -1).
-        epsilon (float): Probability of selecting a random legal move.
-
+        epsilon_decay (float): Decay factor to determine the probability of selecting a random legal move.
     Returns:
         int: Chosen action index.
     """
+    epsilon = max(0.01, 0.2 * epsilon_decay)
+
     legal_moves = game_quixo.possible_moves(state, cur_player)
     if len(legal_moves) == 0:
         raise ValueError("No legal moves available")
@@ -170,7 +284,10 @@ def select_move_train(
 
 
 def play_game_train(
-    net: NTupleNetwork, alpha: float = 0.01, gamma: float = 0.99, epsilon: float = 0.1
+    net: NTupleNetwork,
+    alpha: float = 0.2,
+    gamma: float = 0.99,
+    epsilon_decay: float = 1,
 ) -> tuple[int, int]:
     """
     Plays one self-play episode of Quixo using a TD-learning(λ) N-tuple network.
@@ -179,8 +296,7 @@ def play_game_train(
         net (NTupleNetwork): N-tuple network that approximates the value function.
         alpha (float): Learning rate for TD updates.
         gamma (float): Discount factor for future rewards.
-        epsilon (float): Probability of selecting a random legal move.
-
+        epsilon_decay (float): Decay factor to determine the probability of selecting a random legal move.
     Returns:
         tuple[int, int]:
             - Game result from the perspective of player 1:
@@ -192,35 +308,40 @@ def play_game_train(
     net.reset_traces()
     state = game_quixo.INITIAL_STATE.copy()
     cur_player = int(np.random.choice([1, -1]))
-    action = select_move_train(net, state, cur_player, epsilon)
-    next_state, won = game_quixo.move(state, action, cur_player)
-    state = next_state
-    cur_player *= -1
-    move_count = 1
+    move_count = 0
+    player_x_last_state = None
 
     while True:
-        action = select_move_train(net, state, cur_player, epsilon)
+        if cur_player == -1 and (random.random() <= GREEDY_WIN_AGENT_PROB):
+            action = agents_quixo.GreedyWinAgent.select_action(state, cur_player)
+        else:
+            action = select_move_train(net, state, cur_player, epsilon_decay)
         next_state, won = game_quixo.move(state, action, cur_player)
+        move_count += 1
+
         reward = 0.0
         terminal = won != 0
-        if terminal:
-            reward = won
 
-        value = net.evaluate(state)
-        if terminal:
-            next_value = 0.0
-        else:
-            next_value = net.evaluate(next_state)
+        if cur_player == 1:
+            if player_x_last_state:
+                last_value = net.evaluate_for_player(player_x_last_state, cur_player)
 
-        delta = (reward + gamma * next_value) - value
-        net.update(state, delta, alpha, gamma=gamma)
+                if terminal:
+                    reward = won
+                    next_value = 0.0
+                else:
+                    next_value = net.evaluate_for_player(next_state, cur_player)
+
+                delta = (reward + gamma * next_value) - last_value
+                net.update(player_x_last_state, delta, alpha, gamma=gamma)
+
+            player_x_last_state = next_state
 
         if terminal:
             return won, move_count + 1
 
         state = next_state
         cur_player *= -1
-        move_count += 1
 
 
 def play_game_full(
