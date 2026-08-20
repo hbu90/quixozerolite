@@ -28,13 +28,19 @@ class TournamentPlayer:
 def load_model(path: str) -> model_quixo.NTupleNetwork:
     net = model_quixo.NTupleNetwork()
 
-    saved = np.load(path, allow_pickle=True)
+    data = np.load(path)
 
-    for tup, saved_tup in zip(net.tuples, saved):
-        if hasattr(saved_tup, "weights"):
-            tup.weights[:] = saved_tup.weights
-        else:
-            tup.weights[:] = saved_tup
+    for i, tup in enumerate(net.tuples):
+        weight_key = f"tuple_{i}_weights"
+        pos_key = f"tuple_{i}_positions"
+
+        if weight_key not in data or pos_key not in data:
+            raise KeyError(f"Missing '{weight_key}' or '{pos_key}'.")
+
+        if not np.array_equal(data[pos_key], tup.positions):
+            raise ValueError(f"Tuple {i} positions do not match checkpoint.")
+
+        tup.weights[:] = data[weight_key]
 
     return net
 
@@ -97,7 +103,7 @@ def win_ratio_from_results(results: list[tuple[str, str, float]]) -> float:
 
 def tournament(
     player_model_paths: list[str],
-    games_per_pair: int = 15,
+    games_per_pair: int = 100,
 ) -> list[tuple[str, str, float]]:
     players = []
 
@@ -209,15 +215,15 @@ def offline_elo(
 
 
 if __name__ == "__main__":
-    model_paths = [str(p) for p in Path("saves/20260614").glob("*.npy")]
+    model_paths = [str(p) for p in Path("saves/20260815").glob("*.npz")]
 
     tournament_results = tournament(
         player_model_paths=model_paths,
-        games_per_pair=15,
+        games_per_pair=100,
     )
 
-    with open('tournament_results.csv', 'w') as csvfile:
-        csvwriter = csv.writer(csvfile, delimiter=',')
+    with open("tournament_results.csv", "w") as csvfile:
+        csvwriter = csv.writer(csvfile, delimiter=",")
         csvwriter.writerows(tournament_results)
 
     offline_elo_ratings = offline_elo(tournament_results, n_shuffles=20, k=32)
