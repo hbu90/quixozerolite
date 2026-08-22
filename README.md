@@ -86,7 +86,7 @@ After each move, the network's estimate of the current state is compared with th
 For the training of our agent, we implement the TD-FARL algorithm [5], and we train the network using both players' experience of the board. The symmetrical nature of
 Quixo is also used when updating the weights to help improve learning. 
 
-![TD-FARL Algorithm](images/td_farl_algorithm.PNG) [5]
+![TD-FARL Algorithm](images/td_farl_algorithm.png) [5]
 
 The TD error is:
 
