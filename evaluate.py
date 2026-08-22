@@ -11,7 +11,7 @@ import csv
 
 TOURNAMENT_MCTS_ITERATIONS = 10
 TOURNAMENT_MCTS_SIMULATION_SIZE = 4
-
+MODEL_PATH = "saves/20260815"
 
 @dataclass
 class TournamentPlayer:
@@ -215,20 +215,20 @@ def offline_elo(
 
 
 if __name__ == "__main__":
-    model_paths = [str(p) for p in Path("saves/20260815").glob("*.npz")]
+    model_paths = [str(p) for p in Path(MODEL_PATH).glob("*.npz")]
 
     tournament_results = tournament(
         player_model_paths=model_paths,
         games_per_pair=100,
     )
 
-    with open("tournament_results.csv", "w") as csvfile:
+    with open(f"tournament_results_{MODEL_PATH}.csv", "w") as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=",")
         csvwriter.writerows(tournament_results)
 
     offline_elo_ratings = offline_elo(tournament_results, n_shuffles=20, k=32)
 
-    with open("elo_ratings.json", "w") as f:
+    with open(f"elo_ratings_{MODEL_PATH}.json", "w") as f:
         json.dump(offline_elo_ratings, f, indent=4)
 
     for n, r in sorted(offline_elo_ratings.items(), key=lambda x: x[1], reverse=True):
