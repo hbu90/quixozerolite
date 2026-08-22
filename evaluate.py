@@ -9,9 +9,10 @@ import numpy as np
 from pathlib import Path
 import csv
 
-TOURNAMENT_MCTS_ITERATIONS = 10
-TOURNAMENT_MCTS_SIMULATION_SIZE = 4
-MODEL_PATH = "saves/20260815"
+TOURNAMENT_MCTS_ITERATIONS = 20
+TOURNAMENT_MCTS_SIMULATION_SIZE = 10
+MODEL_FOLDER = "20260822"
+MODEL_PATH = f"saves/{MODEL_FOLDER}"
 
 @dataclass
 class TournamentPlayer:
@@ -174,11 +175,18 @@ def compute_elo_from_games(
 ) -> dict[str, float]:
     ratings = {}
 
-    for p1, p2, score_p1 in games:
+    for p1, p2, result in games:
         if p1 not in ratings:
             ratings[p1] = start_rating
         if p2 not in ratings:
             ratings[p2] = start_rating
+
+        if result > 0.5:
+            score_p1 = 1.0
+        elif result < -0.5:
+            score_p1 = 0.0
+        else:
+            score_p1 = 0.5
 
         ratings[p1], ratings[p2] = update_elo(ratings[p1], ratings[p2], score_p1, k=k)
 
@@ -222,13 +230,13 @@ if __name__ == "__main__":
         games_per_pair=100,
     )
 
-    with open(f"tournament_results_{MODEL_PATH}.csv", "w") as csvfile:
+    with open(f"tournament_results_{MODEL_FOLDER}.csv", "w") as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=",")
         csvwriter.writerows(tournament_results)
 
     offline_elo_ratings = offline_elo(tournament_results, n_shuffles=20, k=32)
 
-    with open(f"elo_ratings_{MODEL_PATH}.json", "w") as f:
+    with open(f"elo_ratings_{MODEL_FOLDER}.json", "w") as f:
         json.dump(offline_elo_ratings, f, indent=4)
 
     for n, r in sorted(offline_elo_ratings.items(), key=lambda x: x[1], reverse=True):
