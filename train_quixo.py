@@ -7,12 +7,12 @@ from tqdm import tqdm
 from lib import model_quixo
 
 
-MAX_STEPS = 4_000
+MAX_STEPS = 10_000
 LEARNING_RATE = 0.2
 GAMMA = 0.99
 EPSILON_DECAY_FACTOR = 1
 PLAY_EPISODES = 25
-SAVE_EVERY_N_STEPS = 250
+SAVE_EVERY_N_STEPS = 1_000
 
 
 if __name__ == "__main__":
@@ -24,9 +24,9 @@ if __name__ == "__main__":
     os.makedirs(saves_path, exist_ok=True)
 
     net = model_quixo.NTupleNetwork()
-    step_idx = 0
+    step_idx = 1
 
-    while step_idx < MAX_STEPS:
+    while step_idx <= MAX_STEPS:
         print(f"\nSTEP {step_idx} — SELF PLAY")
         t0 = time.time()
         total_game_moves = 0
