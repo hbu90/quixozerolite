@@ -5,7 +5,26 @@ from numpy.typing import NDArray
 from typing import Iterator
 from numba import njit
 import random
+from collections import deque
+from loguru import logger
+import sys
 
+logger.remove()
+
+FINITE_HORIZON = 6
+DEBUG_LOGGING = False
+
+if DEBUG_LOGGING:
+    logger.add(
+        sys.stderr,
+        level="INFO",
+    )
+
+    logger.add(
+        "training.log",
+        level="DEBUG",
+        mode="w",
+    )
 
 GREEDY_WIN_AGENT_PROB = 0.25
 
@@ -64,15 +83,19 @@ def generate_tuples(
     def add(t):
         tuples.add(tuple(t))
 
+    # Horizontals
     for r in range(5):
         add([r * 5 + i for i in range(5)])
 
+    # Verticals
     for c in range(5):
         add([c + 5 * i for i in range(5)])
 
+    # Diagonals
     add([i * 6 for i in range(5)])
     add([4 + i * 4 for i in range(5)])
 
+    # 3 x 3 blocks
     for r in range(3):
         for c in range(3):
             base = r * 5 + c
@@ -90,20 +113,22 @@ def generate_tuples(
                 ]
             )
 
+    # 2 x 2 blocks
     for r in range(4):
         for c in range(4):
             base = r * 5 + c
             add([base, base + 1, base + 5, base + 6])
 
+    # Special offset patterns
     offsets = [
         (0, 6, 12, 18),
         (2, 6, 10, 14),
         (0, 4, 20, 24),
     ]
-
     for pattern in offsets:
         add(pattern)
 
+    # Add 6 and 7 step random walk tuples
     rng = np.random.RandomState(seed)
     target_random = n_random_6 + n_random_7
     while len(tuples) < 40 + target_random:
@@ -120,8 +145,8 @@ def generate_tuples(
 
 
 TUPLES = generate_tuples(
-    n_random_6=150,
-    n_random_7=250,
+    n_random_6=75,
+    n_random_7=75,
     seed=42,
 )
 
@@ -144,13 +169,13 @@ def symmetric_boards(state: NDArray[np.int8]) -> Iterator[NDArray[np.int8]]:
 
 
 @njit(cache=True)
-def map_tuple_index(flat_board: NDArray[np.int8], positions: tuple[int, ...]) -> int:
+def map_tuple_index(flat_board: NDArray[np.int8], positions: NDArray[np.int32]) -> int:
     """
     Map a base-3 encoded index for an n-tuple pattern on a board.
 
     Args:
         flat_board (NDArray[np.int8]): 1D array that represents a 5x5 Quixo board.
-        positions (tuple[int, ...]): Tuple of indices into `flat_board` defining the n-tuple.
+        positions (NDArray[np.int32]): NumPy array of board indices defining the N-tuple.
     Returns:
         int: Base-3 encoded index representing the pattern at those positions.
     """
@@ -194,7 +219,10 @@ def perspective_state(
 
 class NTuple:
     def __init__(self, positions):
-        self.positions = positions
+        self.positions: NDArray[np.int32] = np.asarray(
+            positions,
+            dtype=np.int32,
+        )
         self.weights = np.zeros(3 ** len(positions), dtype=np.float32)
         self.trace = np.zeros_like(self.weights)
 
@@ -219,6 +247,54 @@ class NTupleNetwork:
             tup.trace[idx] += 1.0
             nonzero = tup.trace != 0
             tup.weights[nonzero] += alpha * delta * tup.trace[nonzero]
+
+    def get_features(self, board):
+        """
+        Return the N-tuple indices activated by this board.
+
+        This should include whatever symmetry handling you use.
+        """
+        flat = board.reshape(-1)
+        features = []
+
+        for tup in self.tuples:
+            indices = []
+            for symmetric_board in symmetric_boards(board):
+                sym_flat = symmetric_board.reshape(-1)
+
+                idx = map_tuple_index(
+                    sym_flat,
+                    tup.positions,
+                )
+
+                indices.append(idx)
+
+            features.append(indices)
+
+        logger.debug("Features: {}", features)
+        return features
+
+    def update_finite_horizon(
+        self,
+        history,
+        delta,
+        alpha,
+        lam=0.7,
+    ):
+        logger.debug("History: {}", history)
+        for distance, features in enumerate(reversed(history)):
+            factor = lam**distance
+
+            for tup, indices in zip(self.tuples, features):
+                seen = set()
+
+                for idx in indices:
+                    if idx in seen:
+                        continue
+                    logger.debug("Weights for index {} before: {}", idx, tup.weights[idx])
+                    tup.weights[idx] += alpha * delta * factor
+                    logger.debug("Weights for index {} after: {}", idx, tup.weights[idx])
+                    seen.add(idx)
 
     def reset_traces(self):
         for tup in self.tuples:
@@ -269,16 +345,11 @@ def select_move_train(
     for move in legal_moves:
         next_state, _ = game_quixo.move(state, move, cur_player)
 
-        value = net.evaluate(next_state)
+        value = net.evaluate_for_player(next_state, cur_player)
 
-        if cur_player == 1:
-            if value > best_value:
-                best_value = value
-                best_move = move
-        if cur_player == -1:
-            if value < best_value:
-                best_value = value
-                best_move = move
+        if value > best_value:
+            best_value = value
+            best_move = move
 
     return best_move
 
@@ -305,44 +376,76 @@ def play_game_train(
                 0  → draw
             - Number of moves played in the episode
     """
-    net.reset_traces()
     state = game_quixo.INITIAL_STATE.copy()
     cur_player = int(np.random.choice([1, -1]))
     move_count = 0
-    player_x_last_state = None
+
+    histories = {
+        1: deque(maxlen=FINITE_HORIZON),
+        -1: deque(maxlen=FINITE_HORIZON),
+    }
+    players_last_state = {
+        1: None,
+        -1: None,
+    }
 
     while True:
-        if cur_player == -1 and (random.random() <= GREEDY_WIN_AGENT_PROB):
+        logger.debug("Player: {}", cur_player)
+        logger.debug("Board:\n{}", state)
+        if random.random() <= GREEDY_WIN_AGENT_PROB:
             action = agents_quixo.GreedyWinAgent.select_action(state, cur_player)
         else:
             action = select_move_train(net, state, cur_player, epsilon_decay)
         next_state, won = game_quixo.move(state, action, cur_player)
+        logger.debug("Action: {}", action)
+        logger.debug("Next State: {}", next_state)
         move_count += 1
-
         reward = 0.0
         terminal = won != 0
+        previous_state = players_last_state[cur_player]
 
-        if cur_player == 1:
-            if player_x_last_state:
-                last_value = net.evaluate_for_player(player_x_last_state, cur_player)
+        features = net.get_features(perspective_state(next_state, cur_player))
+        histories[cur_player].append(features)
 
-                if terminal:
-                    reward = won
-                    next_value = 0.0
-                else:
-                    next_value = net.evaluate_for_player(next_state, cur_player)
+        if previous_state is not None:
 
-                delta = (reward + gamma * next_value) - last_value
-                net.update(player_x_last_state, delta, alpha, gamma=gamma)
+            last_value = net.evaluate_for_player(previous_state, cur_player)
 
-            player_x_last_state = next_state
+            if terminal:
+                reward = won if cur_player == 1 else -won
+                next_value = 0.0
+            else:
+                next_value = net.evaluate_for_player(next_state, cur_player)
+
+            delta = reward + gamma * next_value - last_value
+            logger.debug("Last Value: {}", last_value)
+            logger.debug("Next Value: {}", next_value)
+            logger.debug("Delta: {}", delta)
+            net.update_finite_horizon(histories[cur_player], delta, alpha)
 
         if terminal:
-            return won, move_count + 1
+            # Final adaptation for the other player
+            other_player = -cur_player
+            logger.debug("Other player: {}", other_player)
+            logger.debug("players_last_state[other_player]: {}", players_last_state[other_player])
+            if players_last_state[other_player] is not None:
+                other_value = net.evaluate_for_player(
+                    players_last_state[other_player],
+                    other_player,
+                )
+
+                other_delta = -reward - other_value
+                logger.debug("Other Value: {}", other_value)
+                logger.debug("Negative rewards: {}", -reward)
+                logger.debug("Delta: {}", other_delta)
+                net.update_finite_horizon(histories[other_player], other_delta, alpha)
+
+            return won, move_count
+
+        players_last_state[cur_player] = next_state
 
         state = next_state
         cur_player *= -1
-
 
 def play_game_full(
     agent1: (
