@@ -185,7 +185,7 @@ class MCTS:
             values = []
 
             for state, player in zip(expand_states, expand_players):
-                v = net.evaluate(state)
+                v = net.value_function(state)
                 values.append(v)
 
             # Create nodes
