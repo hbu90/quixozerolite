@@ -11,8 +11,9 @@ import csv
 
 TOURNAMENT_MCTS_ITERATIONS = 20
 TOURNAMENT_MCTS_SIMULATION_SIZE = 10
-MODEL_FOLDER = "20260822"
+MODEL_FOLDER = "20260831"
 MODEL_PATH = f"saves/{MODEL_FOLDER}"
+
 
 @dataclass
 class TournamentPlayer:
@@ -85,7 +86,10 @@ def play_matches(
 
         results.append((player_a_name, player_b_name, result))
 
-    return results
+    player_a_wins = sum(result == 1 for _, _, result in results)
+    win_rate = player_a_wins / games * 100
+
+    return results, win_rate
 
 
 def win_ratio_from_results(results: list[tuple[str, str, float]]) -> float:
@@ -107,6 +111,7 @@ def tournament(
     games_per_pair: int = 100,
 ) -> list[tuple[str, str, float]]:
     players = []
+    win_rates = {}
 
     for path in player_model_paths:
         basename = os.path.basename(path)
@@ -141,15 +146,15 @@ def tournament(
 
         print(f"\nStarting {m1.name} vs {m2.name}")
 
-        m1_v_m2_results = play_matches(
+        m1_v_m2_results, win_rate = play_matches(
             m1.agent, m2.agent, m1.name, m2.name, games=games_per_pair
         )
 
-        print(f"Finished {m1.name} vs {m2.name}")
-
+        print(f"Finished {m1.name} vs {m2.name}. Win rate was {win_rate}")
+        win_rates[f"{m1.name}_vs_{m2.name}"] = win_rate
         game_results.extend(m1_v_m2_results)
 
-    return game_results
+    return game_results, win_rates
 
 
 def expected_score(r_a: float, r_b: float) -> float:
@@ -224,11 +229,13 @@ def offline_elo(
 
 if __name__ == "__main__":
     model_paths = [str(p) for p in Path(MODEL_PATH).glob("*.npz")]
-
-    tournament_results = tournament(
+    tournament_results, win_rate_results = tournament(
         player_model_paths=model_paths,
-        games_per_pair=100,
+        games_per_pair=500,
     )
+
+    with open(f"win_rates_{MODEL_FOLDER}.json", "w") as f:
+        json.dump(win_rate_results, f, indent=4)
 
     with open(f"tournament_results_{MODEL_FOLDER}.csv", "w") as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=",")
