@@ -4,14 +4,16 @@ import lib.agents_quixo as agents_quixo
 from numpy.typing import NDArray
 from typing import Iterator
 from numba import njit
-import random
 from collections import deque
 from loguru import logger
 import sys
 
-logger.remove()
 
 FINITE_HORIZON = 6
+LAMBDA = 0.5
+SYMMETRY_COUNT = 6
+
+logger.remove()
 DEBUG_LOGGING = False
 
 if DEBUG_LOGGING:
@@ -26,10 +28,19 @@ if DEBUG_LOGGING:
         mode="w",
     )
 
-GREEDY_WIN_AGENT_PROB = 0.25
 
+def generate_random_walk(length: int, rng: np.random.RandomState) -> tuple[int, ...] | None:
+    """
+    Generate a self-avoiding random walk on a 5x5 Quixo board. The walk starts at a random board position and
+    repeatedly moves to an unvisited adjacent position. Both orthogonal and diagonal moves are allowed.
 
-def generate_random_walk(length, rng):
+    Args:
+        length (int): Number of positions in the random walk.
+        rng (np.random.RandomState): Random number generator used to select the starting position and subsequent moves.
+    Returns:
+        tuple[int, ...] | None: A tuple containing the positions visited by the walk or None if the walk reaches a
+        position from which no unvisited neighbour is available before reaching the requested length.
+    """
     neighbours = {}
 
     for r in range(5):
@@ -60,24 +71,34 @@ def generate_random_walk(length, rng):
 
     while len(walk) < length:
         current = walk[-1]
-
         candidates = [
             position for position in neighbours[current] if position not in walk
         ]
-
         if not candidates:
             return None
-
         walk.append(rng.choice(candidates))
 
     return tuple(walk)
 
 
 def generate_tuples(
-    n_random_6=800,
-    n_random_7=1200,
+    n_random_6=10,
+    n_random_7=10,
     seed=42,
-):
+) -> list[tuple[int, ...]]:
+    """
+    Generate the set of N-tuples. The returned collection contains fixed board patterns including rows, columns,
+    diagonals, 3x3 blocks, 2x2 blocks and special offset patterns. Additional self-avoiding random walks of length
+    6 and 7 are generated to increase the variety of N-tuples.
+
+    Args:
+        n_random_6 (int): Number of random N-tuples of length 6 to generate.
+        n_random_7 (int): Number of random N-tuples of length 7 to generate.
+        seed (int): Seed used to initialise the random number generator.
+    Returns:
+        list[tuple[int, ...]]: A sorted list of unique N-tuples, where each tuple contains integer board positions in
+        the range 0 to 24.
+    """
     tuples = set()
 
     def add(t):
@@ -145,8 +166,8 @@ def generate_tuples(
 
 
 TUPLES = generate_tuples(
-    n_random_6=75,
-    n_random_7=75,
+    n_random_6=10,
+    n_random_7=10,
     seed=42,
 )
 
@@ -199,7 +220,6 @@ def perspective_state(
 ) -> NDArray[np.int8]:
     """
     Convert a board into the perspective of `player`.
-
     The network always evaluates positions with the current player
     represented by +1.
 
@@ -218,100 +238,95 @@ def perspective_state(
 
 
 class NTuple:
-    def __init__(self, positions):
-        self.positions: NDArray[np.int32] = np.asarray(
+    def __init__(self, positions: NDArray[np.int32]):
+        self.positions = np.asarray(
             positions,
             dtype=np.int32,
         )
         self.weights = np.zeros(3 ** len(positions), dtype=np.float32)
-        self.trace = np.zeros_like(self.weights)
 
 
 class NTupleNetwork:
     def __init__(self):
         self.tuples = [NTuple(t) for t in TUPLES]
 
-    def evaluate(self, board):
-        flat = board.reshape(-1)
-        value = 0.0
-        for tup in self.tuples:
-            idx = map_tuple_index(flat, tup.positions)
-            value += tup.weights[idx]
-        return np.tanh(value)
-
-    def update(self, board, delta, alpha, gamma=0.99, lam=0.7):
-        flat = board.reshape(-1)
-        for tup in self.tuples:
-            tup.trace *= gamma * lam
-            idx = map_tuple_index(flat, tup.positions)
-            tup.trace[idx] += 1.0
-            nonzero = tup.trace != 0
-            tup.weights[nonzero] += alpha * delta * tup.trace[nonzero]
-
-    def get_features(self, board):
+    def get_features(self, state: NDArray[np.int8]) -> list:
         """
-        Return the N-tuple indices activated by this board.
-
-        This should include whatever symmetry handling you use.
+        Return the N-tuple indices activated by the board.
         """
-        flat = board.reshape(-1)
         features = []
 
         for tup in self.tuples:
             indices = []
-            for symmetric_board in symmetric_boards(board):
+            for symmetric_board in symmetric_boards(state):
                 sym_flat = symmetric_board.reshape(-1)
-
-                idx = map_tuple_index(
-                    sym_flat,
-                    tup.positions,
-                )
-
+                idx = map_tuple_index(sym_flat, tup.positions)
                 indices.append(idx)
-
             features.append(indices)
 
         logger.debug("Features: {}", features)
         return features
 
-    def update_finite_horizon(
+    def value_function(self, state: NDArray[np.int8]) -> float:
+        """
+        Evaluate a board by summing the weights for each tuple in the state and the ones symmetric to itself.
+        Apply the hyperbolic tangent function to the sums to get the value and bound between -1 and 1.
+        """
+        value = 0.0
+        for symmetric_board in symmetric_boards(state):
+            sym_flat = symmetric_board.reshape(-1)
+            for tup in self.tuples:
+                idx = map_tuple_index(sym_flat, tup.positions)
+                value += tup.weights[idx]
+
+        return np.tanh(value)
+
+    def value_function_for_player(
         self,
-        history,
-        delta,
-        alpha,
-        lam=0.7,
-    ):
-        logger.debug("History: {}", history)
-        for distance, features in enumerate(reversed(history)):
-            factor = lam**distance
-
-            for tup, indices in zip(self.tuples, features):
-                seen = set()
-
-                for idx in indices:
-                    if idx in seen:
-                        continue
-                    logger.debug("Weights for index {} before: {}", idx, tup.weights[idx])
-                    tup.weights[idx] += alpha * delta * factor
-                    logger.debug("Weights for index {} after: {}", idx, tup.weights[idx])
-                    seen.add(idx)
-
-    def reset_traces(self):
-        for tup in self.tuples:
-            tup.trace.fill(0)
-
-    def evaluate_for_player(
-        self,
-        board: NDArray[np.int8],
+        state: NDArray[np.int8],
         cur_player: int,
     ) -> float:
         """
-        Evaluate a board from the perspective of `player`.
-
-        The network always sees the current player as +1.
+        Evaluate a board for the current player to allow the network to always sees the current player as +1.
         """
-        board_perspective = perspective_state(board, cur_player)
-        return self.evaluate(board_perspective)
+        board_perspective = perspective_state(state, cur_player)
+        return self.value_function(board_perspective)
+
+    def update_weights_with_finite_horizon(
+        self,
+        history: dict,
+        scaling_factor: float,
+        alpha: float,
+        delta: float,
+        value_function_derivative: float,
+        lam: float = 0.5,
+    ):
+        """
+        Update the weights in the network with a fixed eligibility trace horizon.
+        """
+        logger.debug("History: {}", history)
+        for distance, features in enumerate(reversed(history)):
+            eligibility_factor = lam**distance
+            for tup, indices in zip(self.tuples, features):
+                seen_indices = set()
+
+                for idx in indices:
+                    if idx in seen_indices:
+                        continue
+                    logger.debug(
+                        "Weights for index {} before: {}", idx, tup.weights[idx]
+                    )
+                    tup.weights[idx] += (
+                        scaling_factor
+                        * alpha
+                        * delta
+                        * value_function_derivative
+                        * eligibility_factor
+                    )
+                    logger.debug(
+                        "Weights for index {} after: {}", idx, tup.weights[idx]
+                    )
+                    seen_indices.add(idx)
 
 
 def select_move_train(
@@ -345,7 +360,7 @@ def select_move_train(
     for move in legal_moves:
         next_state, _ = game_quixo.move(state, move, cur_player)
 
-        value = net.evaluate_for_player(next_state, cur_player)
+        value = net.value_function_for_player(next_state, cur_player)
 
         if value > best_value:
             best_value = value
@@ -389,13 +404,12 @@ def play_game_train(
         -1: None,
     }
 
+    scaling_factor = 1 / (len(net.tuples) * SYMMETRY_COUNT)
+
     while True:
         logger.debug("Player: {}", cur_player)
         logger.debug("Board:\n{}", state)
-        if random.random() <= GREEDY_WIN_AGENT_PROB:
-            action = agents_quixo.GreedyWinAgent.select_action(state, cur_player)
-        else:
-            action = select_move_train(net, state, cur_player, epsilon_decay)
+        action = select_move_train(net, state, cur_player, epsilon_decay)
         next_state, won = game_quixo.move(state, action, cur_player)
         logger.debug("Action: {}", action)
         logger.debug("Next State: {}", next_state)
@@ -404,41 +418,59 @@ def play_game_train(
         terminal = won != 0
         previous_state = players_last_state[cur_player]
 
-        features = net.get_features(perspective_state(next_state, cur_player))
-        histories[cur_player].append(features)
+        histories[cur_player].append(
+            net.get_features(perspective_state(next_state, cur_player))
+        )
 
         if previous_state is not None:
-
-            last_value = net.evaluate_for_player(previous_state, cur_player)
+            last_value = net.value_function_for_player(previous_state, cur_player)
 
             if terminal:
                 reward = won if cur_player == 1 else -won
                 next_value = 0.0
             else:
-                next_value = net.evaluate_for_player(next_state, cur_player)
+                next_value = net.value_function_for_player(next_state, cur_player)
 
             delta = reward + gamma * next_value - last_value
+            value_function_derivative = 1 - next_value**2
             logger.debug("Last Value: {}", last_value)
             logger.debug("Next Value: {}", next_value)
             logger.debug("Delta: {}", delta)
-            net.update_finite_horizon(histories[cur_player], delta, alpha)
+            net.update_weights_with_finite_horizon(
+                histories[cur_player],
+                scaling_factor,
+                alpha,
+                delta,
+                value_function_derivative,
+                LAMBDA,
+            )
 
         if terminal:
             # Final adaptation for the other player
             other_player = -cur_player
             logger.debug("Other player: {}", other_player)
-            logger.debug("players_last_state[other_player]: {}", players_last_state[other_player])
+            logger.debug(
+                "players_last_state[other_player]: {}", players_last_state[other_player]
+            )
             if players_last_state[other_player] is not None:
-                other_value = net.evaluate_for_player(
+                other_value = net.value_function_for_player(
                     players_last_state[other_player],
                     other_player,
                 )
 
                 other_delta = -reward - other_value
+                value_function_derivative = 1 - other_value**2
                 logger.debug("Other Value: {}", other_value)
                 logger.debug("Negative rewards: {}", -reward)
                 logger.debug("Delta: {}", other_delta)
-                net.update_finite_horizon(histories[other_player], other_delta, alpha)
+                net.update_weights_with_finite_horizon(
+                    histories[other_player],
+                    scaling_factor,
+                    alpha,
+                    other_delta,
+                    value_function_derivative,
+                    LAMBDA,
+                )
 
             return won, move_count
 
@@ -446,6 +478,7 @@ def play_game_train(
 
         state = next_state
         cur_player *= -1
+
 
 def play_game_full(
     agent1: (
