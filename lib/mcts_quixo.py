@@ -6,9 +6,6 @@ import lib.game_quixo as game_quixo
 import lib.model_quixo as model_quixo
 
 
-DIRICHLET_EPSILON = 0.25
-
-
 class MCTS:
     """
     Monte-Carlo Tree Search class that keeps statistics for every state encountered during the search.
@@ -37,12 +34,12 @@ class MCTS:
     def __len__(self):
         return len(self.value)
 
-    def is_leaf(self, state_int: int) -> bool:
-        return state_int not in self.probs
+    def is_leaf(self, state_int: int, player: int) -> bool:
+        return (state_int, player) not in self.probs
 
     def find_leaf(
         self, state_int: int, player: int
-    ) -> tuple[float | None, int, int | Any, list[int], list[int]]:
+    ) -> tuple[float | None, int, int | Any, list[int], list[int], list[int]]:
         """
         Traverse the tree from the root until a leaf node is found.
 
@@ -55,37 +52,35 @@ class MCTS:
             int: Integer representing the player (1 or -1).
             list: List of visited states.
             list: List of implemented actions.
+            list: List of players who carried out actions.
         """
         assert player in [game_quixo.PLAYER_O, game_quixo.PLAYER_X]
 
-        states = []
-        actions = []
+        states_tracked = []
+        actions_tracked = []
+        players_tracked = []
         cur_state = state_int
         cur_player = player
         value = None
         visited = set()
         # Keep searching until a leaf node is found
-        while not self.is_leaf(cur_state):
+        while not self.is_leaf(cur_state, cur_player):
             # If we revisit the same state, then treat it as a draw and break early
             if (cur_state, cur_player) in visited:
                 value = 0.0
                 break
             visited.add((cur_state, cur_player))
 
-            states.append(cur_state)
+            states_tracked.append(cur_state)
+            players_tracked.append(cur_player)
 
-            counts = self.visit_count[cur_state]
+            key = (cur_state, cur_player)
+
+            counts = self.visit_count[key]
             total_sqrt = m.sqrt(1 + sum(counts))
-            probs = self.probs[cur_state]
-            values_avg = self.value_avg[cur_state]
+            probs = self.probs[key]
+            values_avg = self.value_avg[key]
 
-            # Only apply this random noise to the probability at the root node
-            if cur_state == state_int:
-                noises = np.random.dirichlet([0.03] * game_quixo.N_ACTIONS)
-                probs = [
-                    (1 - DIRICHLET_EPSILON) * prob + DIRICHLET_EPSILON * noise
-                    for prob, noise in zip(probs, noises)
-                ]
             # Calculate PUCT score
             score = [
                 mcts_value_avg + self.c_puct * mcts_prob * total_sqrt / (1 + mcts_count)
@@ -101,7 +96,7 @@ class MCTS:
             for invalid in invalid_actions:
                 score[invalid] = -np.inf
             action = int(np.argmax(score))
-            actions.append(action)
+            actions_tracked.append(action)
             # Transition to the next state using best action
             cur_state, won = game_quixo.move(
                 game_quixo.decode_board(cur_state), action, cur_player
@@ -112,136 +107,118 @@ class MCTS:
             elif won == -cur_player:
                 value = -1.0
                 break
-            cur_player = cur_player * -1
+            cur_player *= -1
             moves_count = len(game_quixo.possible_moves(cur_state, cur_player))
             # If no moves left, then it is a draw
             if value is None and moves_count == 0:
                 value = 0.0
             cur_state = game_quixo.encode_board(cur_state)
 
-        return value, cur_state, cur_player, states, actions
+        return (
+            value,
+            cur_state,
+            cur_player,
+            states_tracked,
+            actions_tracked,
+            players_tracked,
+        )
 
     def run_mcts(
         self,
-        n_iterations: int,
         n_simulations: int,
         state_int: int,
-        player: int,
+        cur_player: int,
         net: model_quixo.NTupleNetwork,
     ):
         """
-        Run MCTS simulations from a given game state.
+        Perform multiple MCTS simulations.
 
         Args:
-            n_iterations (int): Number of times MCTS batch of simulations are run.
-            n_simulations (int): Number of MCTS simulations to batch together.
+            n_simulations (int): Number of MCTS simulations to run.
             state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
-            player (int): Integer representing the player (1 or -1).
+            cur_player (int): Integer representing the player (1 or -1).
             net (model_quixo.NTupleNetwork): TD network that predicts value.
         """
-        for step in range(n_iterations):
-            self.mcts_simulations_batch(n_simulations, state_int, player, net)
-
-    def mcts_simulations_batch(
-        self,
-        n_simulations: int,
-        state_int: int,
-        player: int,
-        net: model_quixo.NTupleNetwork,
-    ):
-        """
-        Perform multiple MCTS simulations per call.
-
-        Args:
-            n_simulations (int): Number of MCTS simulations to batch together.
-            state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
-            player (int): Integer representing the player (1 or -1).
-            net (model_quixo.NTupleNetwork): TD network that predicts value.
-        """
-        backup_queue = []
-        expand_states = []  # States to be evaluated by neural network
-        expand_players = []
-        expand_queue = []
-        planned = set()
-
         # Find leaf nodes for multiple MCTS simulations and store for backup, expand, or discard if already seen leaf
         # state to be expanded
         for sim_idx in range(n_simulations):
-            value, leaf_state, leaf_player, states, actions = self.find_leaf(
-                state_int, player
-            )
-            if value is not None:
-                backup_queue.append((value, states, actions))
-            else:
-                if (leaf_state, leaf_player) not in planned:
-                    planned.add((leaf_state, leaf_player))
-                    leaf_state_lists = game_quixo.decode_board(leaf_state)
-                    expand_states.append(leaf_state_lists)
-                    expand_players.append(leaf_player)
-                    expand_queue.append((leaf_state, leaf_player, states, actions))
+            (
+                value,
+                leaf_state_int,
+                leaf_player,
+                states_tracked,
+                actions_tracked,
+                players_tracked,
+            ) = self.find_leaf(state_int, cur_player)
 
-        # Expand nodes using TD network
-        if expand_queue:
-            values = []
+            # Leaf expansion and evaluation
+            if value is None:
+                leaf_state = game_quixo.decode_board(leaf_state_int)
 
-            for state, player in zip(expand_states, expand_players):
-                v = net.value_function(state)
-                values.append(v)
+                # Evaluate leaf
+                value = net.value_function_for_player(leaf_state, leaf_player)
 
-            # Create nodes
-            for (leaf_state, leaf_player, states, actions), value in zip(
-                expand_queue, values
-            ):
-                self.visit_count[leaf_state] = [0] * game_quixo.N_ACTIONS
-                self.value[leaf_state] = [0.0] * game_quixo.N_ACTIONS
-                self.value_avg[leaf_state] = [0.0] * game_quixo.N_ACTIONS
+                key = (leaf_state_int, leaf_player)
+                legal_moves = game_quixo.possible_moves(leaf_state, leaf_player)
 
-                legal_moves = game_quixo.possible_moves(
-                    game_quixo.decode_board(leaf_state), leaf_player
-                )
+                action_values = []
+                for action in legal_moves:
+                    next_state, won = game_quixo.move(
+                        leaf_state.copy(), action, leaf_player
+                    )
 
-                # TO-DO - Use softmax from model?
+                    if won == leaf_player:
+                        action_value = 1.0
+                    elif won == -leaf_player:
+                        action_value = -1.0
+                    else:
+                        action_value = net.value_function_for_player(
+                            next_state, leaf_player
+                        )
+                    action_values.append(action_value)
+
+                temperature = 1.0
+                values = np.array(action_values)
+                values = values - values.max()
+                prior_values = np.exp(values / temperature)
                 prior = np.zeros(game_quixo.N_ACTIONS, dtype=np.float32)
-                prior[legal_moves] = 1.0 / len(legal_moves)
-                self.probs[leaf_state] = prior
+                prior[legal_moves] = prior_values / prior_values.sum()
 
-                # mask = np.zeros(game_quixo.N_ACTIONS)
-                # mask[legal_moves] = 1
-                # prob = prob * mask
-                # if prob.sum() > 0:
-                #     prob /= prob.sum()
-                # else:
-                #     prob = mask / mask.sum()
-                # self.probs[leaf_state] = prob
+                self.visit_count[key] = [0] * game_quixo.N_ACTIONS
+                self.value[key] = [0.0] * game_quixo.N_ACTIONS
+                self.value_avg[key] = [0.0] * game_quixo.N_ACTIONS
+                self.probs[key] = prior
 
-                backup_queue.append((value, states, actions))
+            # Backup this simulation immediately
+            for state, action, player in zip(
+                states_tracked[::-1], actions_tracked[::-1], players_tracked[::-1]
+            ):
+                key = (state, player)
 
-        # Backup of searches
-        for value, states, actions in backup_queue:
-            # value is from perspective of leaf_player
-
-            for state_int, action in zip(states[::-1], actions[::-1]):
-                self.visit_count[state_int][action] += 1
-                self.value[state_int][action] += value
-                self.value_avg[state_int][action] = (
-                    self.value[state_int][action] / self.visit_count[state_int][action]
+                self.visit_count[key][action] += 1
+                self.value[key][action] += value
+                self.value_avg[key][action] = (
+                    self.value[key][action] / self.visit_count[key][action]
                 )
-                value = -value  # TO-DO: Look at this logic
+
+                value = -value
 
     def get_policy_value(
-        self, state_int: int, tau: int = 1
+        self, state_int: int, cur_player: int, tau: int = 1
     ) -> tuple[list[float], list[float]]:
         """
         Convert MCTS search statistics at a state into a policy distribution and values for each action.
 
         Args:
             state_int (int): Encoded integer that represents a unique Quixo 5x5 board state.
+            cur_player (int): Integer representing the player (1 or -1).
             tau (int): Parameter that controls degree of exploration for returned policy. Defaults to 1.
         Returns:
             list[float]: Policy (π(s)) for a given state.
             list[float]:: Values (Q(s,a)) for a given state.
         """
-        counts = self.visit_count[state_int]
+        key = (state_int, cur_player)
+        counts = self.visit_count[key]
         if tau == 0:
             probs = [0.0] * game_quixo.N_ACTIONS
             probs[np.argmax(counts)] = 1.0
@@ -249,5 +226,5 @@ class MCTS:
             counts = [count ** (1.0 / tau) for count in counts]
             total = sum(counts)
             probs = [count / total for count in counts]
-        values = self.value_avg[state_int]
+        values = self.value_avg[key]
         return probs, values
