@@ -5,31 +5,15 @@ from numpy.typing import NDArray
 from typing import Iterator
 from numba import njit
 from collections import deque
-from loguru import logger
-import sys
-
 
 FINITE_HORIZON = 6
 LAMBDA = 0.5
 SYMMETRY_COUNT = 6
 
-logger.remove()
-DEBUG_LOGGING = False
 
-if DEBUG_LOGGING:
-    logger.add(
-        sys.stderr,
-        level="INFO",
-    )
-
-    logger.add(
-        "training.log",
-        level="DEBUG",
-        mode="w",
-    )
-
-
-def generate_random_walk(length: int, rng: np.random.RandomState) -> tuple[int, ...] | None:
+def generate_random_walk(
+    length: int, rng: np.random.RandomState
+) -> tuple[int, ...] | None:
     """
     Generate a self-avoiding random walk on a 5x5 Quixo board. The walk starts at a random board position and
     repeatedly moves to an unvisited adjacent position. Both orthogonal and diagonal moves are allowed.
@@ -233,8 +217,8 @@ def perspective_state(
 
     if cur_player == game_quixo.PLAYER_X:
         return state.copy()
-
-    return (-state).astype(np.int8)
+    else:
+        return (-state).astype(np.int8)
 
 
 class NTuple:
@@ -264,7 +248,6 @@ class NTupleNetwork:
                 indices.append(idx)
             features.append(indices)
 
-        logger.debug("Features: {}", features)
         return features
 
     def value_function(self, state: NDArray[np.int8]) -> float:
@@ -304,7 +287,6 @@ class NTupleNetwork:
         """
         Update the weights in the network with a fixed eligibility trace horizon.
         """
-        logger.debug("History: {}", history)
         for distance, features in enumerate(reversed(history)):
             eligibility_factor = lam**distance
             for tup, indices in zip(self.tuples, features):
@@ -313,18 +295,12 @@ class NTupleNetwork:
                 for idx in indices:
                     if idx in seen_indices:
                         continue
-                    logger.debug(
-                        "Weights for index {} before: {}", idx, tup.weights[idx]
-                    )
                     tup.weights[idx] += (
                         scaling_factor
                         * alpha
                         * delta
                         * value_function_derivative
                         * eligibility_factor
-                    )
-                    logger.debug(
-                        "Weights for index {} after: {}", idx, tup.weights[idx]
                     )
                     seen_indices.add(idx)
 
@@ -355,7 +331,7 @@ def select_move_train(
         return int(np.random.choice(legal_moves))
 
     best_move = legal_moves[0]
-    best_value = -999999 * cur_player
+    best_value = -999999
 
     for move in legal_moves:
         next_state, _ = game_quixo.move(state, move, cur_player)
@@ -407,12 +383,8 @@ def play_game_train(
     scaling_factor = 1 / (len(net.tuples) * SYMMETRY_COUNT)
 
     while True:
-        logger.debug("Player: {}", cur_player)
-        logger.debug("Board:\n{}", state)
         action = select_move_train(net, state, cur_player, epsilon_decay)
         next_state, won = game_quixo.move(state, action, cur_player)
-        logger.debug("Action: {}", action)
-        logger.debug("Next State: {}", next_state)
         move_count += 1
         reward = 0.0
         terminal = won != 0
@@ -433,9 +405,6 @@ def play_game_train(
 
             delta = reward + gamma * next_value - last_value
             value_function_derivative = 1 - next_value**2
-            logger.debug("Last Value: {}", last_value)
-            logger.debug("Next Value: {}", next_value)
-            logger.debug("Delta: {}", delta)
             net.update_weights_with_finite_horizon(
                 histories[cur_player],
                 scaling_factor,
@@ -448,10 +417,6 @@ def play_game_train(
         if terminal:
             # Final adaptation for the other player
             other_player = -cur_player
-            logger.debug("Other player: {}", other_player)
-            logger.debug(
-                "players_last_state[other_player]: {}", players_last_state[other_player]
-            )
             if players_last_state[other_player] is not None:
                 other_value = net.value_function_for_player(
                     players_last_state[other_player],
@@ -460,9 +425,6 @@ def play_game_train(
 
                 other_delta = -reward - other_value
                 value_function_derivative = 1 - other_value**2
-                logger.debug("Other Value: {}", other_value)
-                logger.debug("Negative rewards: {}", -reward)
-                logger.debug("Delta: {}", other_delta)
                 net.update_weights_with_finite_horizon(
                     histories[other_player],
                     scaling_factor,
@@ -497,7 +459,7 @@ def play_game_full(
     agent1_plays_first: bool | None = None,
 ):
     """
-    Simulates a single self-play game between two neural networks using MCTS.
+    Simulates a single game between two agents, with option of using MCTS.
 
     Args:
         agent1: The first agent. Can be an MCTSAgent or a heuristic-based agent.
