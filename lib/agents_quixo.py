@@ -69,39 +69,52 @@ class WinBlockAgent:
         return int(random.choice(legal_moves))
 
 
+class TDAgent:
+    def __init__(self, net):
+        self.net = net
+        self.name = "td_net"
+
+    def select_action(self,  state: NDArray[np.int8], cur_player: int) -> tuple[int, np.ndarray]:
+        legal_moves = game_quixo.possible_moves(state, cur_player)
+
+        best_move = legal_moves[0]
+        best_value = -999999
+
+        for move in legal_moves:
+            next_state, _ = game_quixo.move(state, move, cur_player)
+
+            value = self.net.value_function_for_player(next_state, cur_player)
+
+            if value > best_value:
+                best_value = value
+                best_move = move
+        action = best_move
+
+        return action
+
 class MCTSAgent:
-    def __init__(self, net, mcts, n_iters, n_sims):
+    def __init__(self, net, mcts, n_sims):
         self.net = net
         self.mcts = mcts
-        self.n_iters = n_iters
         self.n_sims = n_sims
         self.name = "mcts_net"
 
     def select_action(
-        self, state: NDArray[np.int8], player: int, tau: float = 1.0
+        self, state: NDArray[np.int8], cur_player: int, tau: float = 1.0
     ) -> tuple[int, np.ndarray]:
 
-        state_copy = state.copy()
-        player_copy = player
-
-        # Flip board due to way TD network was trained
-        if player == -1:
-            state_copy *= -1
-            player_copy *= -1
-
-        state_int = game_quixo.encode_board(state_copy)
+        state_int = game_quixo.encode_board(state)
 
         self.mcts.run_mcts(
-            n_iterations=self.n_iters,
             n_simulations=self.n_sims,
             state_int=state_int,
-            player=player_copy,
+            cur_player=cur_player,
             net=self.net,
         )
 
-        probs, _ = self.mcts.get_policy_value(state_int, tau=tau)
+        probs, _ = self.mcts.get_policy_value(state_int, cur_player, tau=tau)
 
-        legal_moves = game_quixo.possible_moves(state_copy, player_copy)
+        legal_moves = game_quixo.possible_moves(state, cur_player)
         mask = np.zeros(game_quixo.N_ACTIONS)
         mask[legal_moves] = 1
         probs = np.array(probs, dtype=np.float32)
