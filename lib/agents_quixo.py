@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 from lib import game_quixo
+from scipy.special import softmax
 
 
 @dataclass
@@ -76,19 +77,25 @@ class TDAgent:
 
     def select_action(self,  state: NDArray[np.int8], cur_player: int) -> tuple[int, np.ndarray]:
         legal_moves = game_quixo.possible_moves(state, cur_player)
+        mask = np.zeros(game_quixo.N_ACTIONS)
+        probs = np.zeros(game_quixo.N_ACTIONS)
+        mask[legal_moves] = 1
 
-        best_move = legal_moves[0]
-        best_value = -999999
+        for action_idx in range(game_quixo.N_ACTIONS):
+            if mask[action_idx] == 1:
+                next_state, _ = game_quixo.move(state, action_idx, cur_player)
+                value = self.net.value_function_for_player(next_state, cur_player)
+                probs[action_idx] = value
+            else:
+                probs[action_idx] = -np.inf
 
-        for move in legal_moves:
-            next_state, _ = game_quixo.move(state, move, cur_player)
+        probs = np.array(probs, dtype=np.float32)
 
-            value = self.net.value_function_for_player(next_state, cur_player)
-
-            if value > best_value:
-                best_value = value
-                best_move = move
-        action = best_move
+        if probs.sum() == 0:
+            action = int(np.random.choice(legal_moves))
+        else:
+            probs = softmax(probs)
+            action = int(np.random.choice(game_quixo.N_ACTIONS, p=probs))
 
         return action
 
