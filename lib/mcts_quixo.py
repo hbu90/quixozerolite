@@ -4,7 +4,7 @@ from typing import Any
 import numpy as np
 import lib.game_quixo as game_quixo
 import lib.model_quixo as model_quixo
-
+from scipy.special import softmax
 
 class MCTS:
     """
@@ -62,20 +62,14 @@ class MCTS:
         cur_state = state_int
         cur_player = player
         value = None
+        terminal = None
         visited = set()
+        key = (cur_state, cur_player)
+
         # Keep searching until a leaf node is found
         while not self.is_leaf(cur_state, cur_player):
-            # If we revisit the same state, then treat it as a draw and break early
-            if (cur_state, cur_player) in visited:
-                value = 0.0
-                break
-            visited.add((cur_state, cur_player))
-
             states_tracked.append(cur_state)
             players_tracked.append(cur_player)
-
-            key = (cur_state, cur_player)
-
             counts = self.visit_count[key]
             total_sqrt = m.sqrt(1 + sum(counts))
             probs = self.probs[key]
@@ -97,21 +91,34 @@ class MCTS:
                 score[invalid] = -np.inf
             action = int(np.argmax(score))
             actions_tracked.append(action)
+
             # Transition to the next state using best action
             cur_state, won = game_quixo.move(
                 game_quixo.decode_board(cur_state), action, cur_player
             )
+            moves_count = len(game_quixo.possible_moves(cur_state, cur_player))
+
             if won == cur_player:
                 value = 1.0
+                terminal = True
                 break
             elif won == -cur_player:
                 value = -1.0
+                terminal = True
                 break
-            cur_player *= -1
-            moves_count = len(game_quixo.possible_moves(cur_state, cur_player))
             # If no moves left, then it is a draw
             if value is None and moves_count == 0:
                 value = 0.0
+                terminal = True
+                break
+            # If we revisit the same state, then treat it as a draw and break early
+            if key in visited:
+                value = 0.0
+                terminal = True
+                break
+            visited.add(key)
+
+            cur_player *= -1
             cur_state = game_quixo.encode_board(cur_state)
 
         return (
@@ -121,6 +128,7 @@ class MCTS:
             states_tracked,
             actions_tracked,
             players_tracked,
+            terminal
         )
 
     def run_mcts(
@@ -149,6 +157,7 @@ class MCTS:
                 states_tracked,
                 actions_tracked,
                 players_tracked,
+                terminal
             ) = self.find_leaf(state_int, cur_player)
 
             # Leaf expansion and evaluation
@@ -159,49 +168,53 @@ class MCTS:
                 value = net.value_function_for_player(leaf_state, leaf_player)
 
                 key = (leaf_state_int, leaf_player)
-                legal_moves = game_quixo.possible_moves(leaf_state, leaf_player)
-
-                action_values = []
-                for action in legal_moves:
-                    next_state, won = game_quixo.move(
-                        leaf_state.copy(), action, leaf_player
-                    )
-
-                    if won == leaf_player:
-                        action_value = 1.0
-                    elif won == -leaf_player:
-                        action_value = -1.0
-                    else:
-                        action_value = net.value_function_for_player(
-                            next_state, leaf_player
-                        )
-                    action_values.append(action_value)
-
-                temperature = 1.0
-                values = np.array(action_values)
-                values = values - values.max()
-                prior_values = np.exp(values / temperature)
-                prior = np.zeros(game_quixo.N_ACTIONS, dtype=np.float32)
-                prior[legal_moves] = prior_values / prior_values.sum()
 
                 self.visit_count[key] = [0] * game_quixo.N_ACTIONS
                 self.value[key] = [0.0] * game_quixo.N_ACTIONS
                 self.value_avg[key] = [0.0] * game_quixo.N_ACTIONS
+
+                legal_moves = game_quixo.possible_moves(leaf_state, leaf_player)
+                mask = np.zeros(game_quixo.N_ACTIONS)
+                mask[legal_moves] = 1
+
+                action_values = [0.0] * game_quixo.N_ACTIONS
+                for action_idx in range(game_quixo.N_ACTIONS):
+                    if mask[action_idx] == 1:
+                        next_state, won = game_quixo.move(
+                            leaf_state.copy(), action_idx, leaf_player
+                        )
+                        if won == leaf_player:
+                            action_value = 100000.0
+                        elif won == -leaf_player:
+                            action_value = -100000.0
+                        else:
+                            action_value = net.value_function_for_player(
+                                next_state, leaf_player
+                            )
+                    else:
+                        action_value = -np.inf
+
+                    action_values[action_idx] = action_value
+
+                prior = softmax(action_values)
                 self.probs[key] = prior
+
+            if not terminal:
+                value = -value
 
             # Backup this simulation immediately
             for state, action, player in zip(
                 states_tracked[::-1], actions_tracked[::-1], players_tracked[::-1]
             ):
                 key = (state, player)
-
                 self.visit_count[key][action] += 1
                 self.value[key][action] += value
                 self.value_avg[key][action] = (
                     self.value[key][action] / self.visit_count[key][action]
                 )
-
                 value = -value
+
+
 
     def get_policy_value(
         self, state_int: int, cur_player: int, tau: int = 1
