@@ -9,10 +9,33 @@ import numpy as np
 from pathlib import Path
 import csv
 
-TOURNAMENT_MCTS_SIMULATION_SIZE = 200
-MODEL_FOLDER = "20260902"
+TOURNAMENT_MCTS_SIMULATION_SIZE = 100
+MODEL_FOLDER = "20261008"
 MODEL_PATH = f"saves/{MODEL_FOLDER}"
 
+from collections import Counter
+
+RESULTS_PATH = f"tournament_results_{MODEL_FOLDER}.csv"
+
+
+def load_results() -> list[tuple[str, str, float]]:
+    if not os.path.exists(RESULTS_PATH):
+        return []
+    with open(RESULTS_PATH, newline="") as f:
+        return [(a, b, float(r)) for a, b, r in csv.reader(f)]
+
+
+def append_results(rows: list[tuple[str, str, float]]) -> None:
+    with open(RESULTS_PATH, "a", newline="") as f:
+        csv.writer(f).writerows(rows)
+
+
+def win_rates_from_games(games: list[tuple[str, str, float]]) -> dict[str, float]:
+    played, wins = Counter(), Counter()
+    for a, b, r in games:
+        played[(a, b)] += 1
+        wins[(a, b)] += r == 1
+    return {f"{a}_vs_{b}": wins[(a, b)] / n * 100 for (a, b), n in played.items()}
 
 @dataclass
 class TournamentPlayer:
@@ -107,7 +130,7 @@ def play_matches(
         result, _ = model_quixo.play_game_full(
             agent1=player_a_agent,
             agent2=player_b_agent,
-            moves_before_tau_0=0,
+            moves_before_tau_0=5,
             agent1_plays_first=player_a_first,
         )
 
@@ -135,7 +158,6 @@ def tournament(
         dictionary of win rates for each player pairing.
     """
     players: list[TournamentPlayer] = []
-    win_rates = {}
 
     for path in player_model_paths:
         basename = os.path.basename(path)
@@ -169,23 +191,28 @@ def tournament(
     for i in range(len(players)):
         for j in range(i + 1, len(players)):
             pairs.append((i, j))
+    game_results = load_results()
+    done = Counter((a, b) for a, b, _ in game_results)
 
-    game_results = []
     for i, j in pairs:
-        m1 = players[i]
-        m2 = players[j]
+        m1, m2 = players[i], players[j]
+
+        if done[(m1.name, m2.name)] >= games_per_pair:
+            print(f"Skipping {m1.name} vs {m2.name} (already done)")
+            continue
 
         print(f"\nStarting {m1.name} vs {m2.name}")
 
-        m1_v_m2_results, win_rate = play_matches(
+        results, win_rate = play_matches(
             m1.agent, m2.agent, m1.name, m2.name, games=games_per_pair
         )
 
         print(f"Finished {m1.name} vs {m2.name}. Win rate was {win_rate}")
-        win_rates[f"{m1.name}_vs_{m2.name}"] = win_rate
-        game_results.extend(m1_v_m2_results)
 
-    return game_results, win_rates
+        append_results(results)
+        game_results.extend(results)
+
+    return game_results, win_rates_from_games(game_results)
 
 
 def expected_score(r_a: float, r_b: float) -> float:
@@ -310,15 +337,11 @@ if __name__ == "__main__":
     model_paths = [str(p) for p in Path(MODEL_PATH).glob("*.npz")]
     tournament_results, win_rate_results = tournament(
         player_model_paths=model_paths,
-        games_per_pair=200,
+        games_per_pair=15,
     )
 
     with open(f"win_rates_{MODEL_FOLDER}.json", "w") as f:
         json.dump(win_rate_results, f, indent=4)
-
-    with open(f"tournament_results_{MODEL_FOLDER}.csv", "w") as csvfile:
-        csvwriter = csv.writer(csvfile, delimiter=",")
-        csvwriter.writerows(tournament_results)
 
     offline_elo_ratings = offline_elo(tournament_results, n_shuffles=20, k=32)
 
