@@ -64,10 +64,17 @@ class MCTS:
         value = None
         terminal = None
         visited = set()
-        key = (cur_state, cur_player)
 
         # Keep searching until a leaf node is found
         while not self.is_leaf(cur_state, cur_player):
+            key = (cur_state, cur_player)
+            # If we revisit the same state, then treat it as a draw and break early
+            if key in visited:
+                value = 0.0
+                terminal = True
+                break
+            visited.add(key)
+            
             states_tracked.append(cur_state)
             players_tracked.append(cur_player)
             counts = self.visit_count[key]
@@ -111,12 +118,6 @@ class MCTS:
                 value = 0.0
                 terminal = True
                 break
-            # If we revisit the same state, then treat it as a draw and break early
-            if key in visited:
-                value = 0.0
-                terminal = True
-                break
-            visited.add(key)
 
             cur_player *= -1
             cur_state = game_quixo.encode_board(cur_state)
