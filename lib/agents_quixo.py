@@ -5,6 +5,7 @@ from numpy.typing import NDArray
 from lib import game_quixo
 from scipy.special import softmax
 
+TD_AGENT_TEMPERATURE = 0.2
 
 @dataclass
 class RandomAgent:
@@ -94,7 +95,7 @@ class TDAgent:
         if probs.sum() == 0:
             action = int(np.random.choice(legal_moves))
         else:
-            probs = softmax(probs)
+            probs = softmax(probs/TD_AGENT_TEMPERATURE)
             action = int(np.random.choice(game_quixo.N_ACTIONS, p=probs))
 
         return action
