@@ -7,10 +7,11 @@ from tqdm import tqdm
 from lib import model_quixo
 
 
-MAX_STEPS = 10_000
+MAX_STEPS = 4_000
 LEARNING_RATE = 0.20
 GAMMA = 0.99
-EPSILON_DECAY_FACTOR = 0.95
+epsilon = 0.95
+EPSILON_DECAY_FACTOR = 0.999
 PLAY_EPISODES = 25
 SAVE_EVERY_N_STEPS = 1_000
 
@@ -32,14 +33,14 @@ if __name__ == "__main__":
         total_game_moves = 0
         winner_count = 0
 
-        EPSILON_DECAY_FACTOR *= 0.999
+        epsilon *= 0.999
 
         for _ in tqdm(range(PLAY_EPISODES)):
             result, moves = model_quixo.play_game_train(
                 net,
                 alpha=LEARNING_RATE,
                 gamma=GAMMA,
-                epsilon_decay=EPSILON_DECAY_FACTOR,
+                epsilon=epsilon,
             )
 
             total_game_moves += moves
