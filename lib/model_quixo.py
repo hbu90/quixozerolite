@@ -9,6 +9,8 @@ from collections import deque
 FINITE_HORIZON = 6
 LAMBDA = 0.5
 SYMMETRY_COUNT = 6
+MAX_MOVES_BEFORE_DRAW = 500
+MCTS_TAU = 0.9
 
 
 def generate_random_walk(
@@ -349,7 +351,7 @@ def play_game_train(
     net: NTupleNetwork,
     alpha: float = 0.2,
     gamma: float = 0.99,
-    epsilon_decay: float = 1,
+    epsilon: float = 0.95,
 ) -> tuple[int, int]:
     """
     Plays one self-play episode of Quixo using a TD-learning(λ) N-tuple network.
@@ -358,7 +360,7 @@ def play_game_train(
         net (NTupleNetwork): N-tuple network that approximates the value function.
         alpha (float): Learning rate for TD updates.
         gamma (float): Discount factor for future rewards.
-        epsilon_decay (float): Decay factor to determine the probability of selecting a random legal move.
+        epsilon (float): Probability of selecting a random legal move.
     Returns:
         tuple[int, int]:
             - Game result from the perspective of player 1:
@@ -383,7 +385,7 @@ def play_game_train(
     scaling_factor = 1 / (len(net.tuples) * SYMMETRY_COUNT)
 
     while True:
-        action = select_move_train(net, state, cur_player, epsilon_decay)
+        action = select_move_train(net, state, cur_player, epsilon)
         next_state, won = game_quixo.move(state, action, cur_player)
         move_count += 1
         reward = 0.0
@@ -455,7 +457,6 @@ def play_game_full(
         | agents_quixo.WinBlockAgent
         | agents_quixo.GreedyWinAgent
     ),
-    moves_before_tau_0: int,
     agent1_plays_first: bool | None = None,
 ):
     """
@@ -464,15 +465,12 @@ def play_game_full(
     Args:
         agent1: The first agent. Can be an MCTSAgent or a heuristic-based agent.
         agent2: The second agent. Can be an MCTSAgent or a heuristic-based agent.
-        moves_before_tau_0 (int): Number of moves at the start of the game for which temperature parameter is 1, before
-        switching to zero.
         agent1_plays_first (bool | None): If True, net1 goes first; if False, net2 goes first. If None, the first player
         is chosen randomly. Defaults to None.
     Returns:
         int: +1 if net1 wins, -1 if net2 wins, 0 for a draw.
         int: Total number of moves played in the game.
     """
-    assert isinstance(moves_before_tau_0, int) and moves_before_tau_0 >= 0
 
     state = game_quixo.INITIAL_STATE
     agents = [agent1, agent2]
@@ -481,7 +479,7 @@ def play_game_full(
     else:
         cur_player = 1 if agent1_plays_first else -1
     move = 0
-    tau = 1 if moves_before_tau_0 > 0 else 0
+    tau = MCTS_TAU
     game_history = []
 
     result = None
@@ -520,7 +518,8 @@ def play_game_full(
             net1_result = 0
             break
         move += 1
-        if move >= moves_before_tau_0:
-            tau = 0
+        if move >= MAX_MOVES_BEFORE_DRAW:
+            net1_result = 0
+            break
 
     return net1_result, move

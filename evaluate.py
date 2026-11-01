@@ -130,7 +130,6 @@ def play_matches(
         result, _ = model_quixo.play_game_full(
             agent1=player_a_agent,
             agent2=player_b_agent,
-            moves_before_tau_0=5,
             agent1_plays_first=player_a_first,
         )
 
