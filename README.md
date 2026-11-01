@@ -28,7 +28,7 @@ pip install poetry
 poetry install
 ```
 
-## Training
+## Background
 
 ```bash
 python train_quixo.py -n <name-of-run>
@@ -55,7 +55,7 @@ The game of Quixo does not have the same complexity of Chess or Go, but is simil
 Research into the game of Quixo has stated that with perfect play from both players, Quixo is a draw game [1] 
 and that neither player can force a win under perfect play.
 
-![Quixo Board](images/quixo_image.jpg)
+![Quixo Board](assets/quixo_image.jpg)
 
 ### N-tuple networks
 
@@ -86,7 +86,7 @@ After each move, the network's estimate of the current state is compared with th
 For the training of our agent, we implement the TD-FARL algorithm [5], and we train the network using both players' experience of the board. The symmetrical nature of
 Quixo is also used when updating the weights to help improve learning. 
 
-![TD-FARL Algorithm](images/td_farl_algorithm.png) [5]
+![TD-FARL Algorithm](assets/td_farl_algorithm.png) [5]
 
 The TD error is:
 
@@ -146,7 +146,7 @@ that can control the degree of exploration within the MCTS policy distribution.
 In AlphaGo Zero and AlphaZero, no rollouts are used (which was not the case for AlphaGo Fan and AlphaGo Lee).
 A rollout is where the game is played onwards from the leaf node to estimate the strength of the position.
 
-![MCTS Methodology](images/mcts.PNG)
+![MCTS Methodology](assets/mcts.PNG)
 
 Self-play is where the program plays against itself, instead of against a human or another program. The program is provided 
 with complete information of the game structure and rules, but is not given any heuristics or rules on what policy to use. 
@@ -155,11 +155,56 @@ MCTS is described as a tool for both policy improvement and policy evaluation [2
 as these searches are iterated within self-play and used to select each move. Subsequently, the neural network is then 
 trained with the results of the more recent self-play data which includes moves and the winner (z). 
 
-![Neural Network Training](images/nn_training.PNG)
+![Neural Network Training](assets/nn_training.PNG)
+
+
+## Training
+
+The TD network was trained with 4,000 steps of 25 episodes, meaning a total of 100,000 self-play games. The parameters used to train 
+the network are in the table below. The TD network was saved every 1,000 steps. 
+
+| Parameter                             | Parameter Value | 
+|---------------------------------------|-----------------|
+| α (learning rate)                     | 0.20            | 
+| γ (discount factor)                   | 0.99            | 
+| ε (initial value)                     | 0.95            |
+| ε-decay factor                        | 0.999           |
+| λ (eligibility trace discount factor) | 0.50            |
+
 
 ## Evaluation
 
+Unlike in [4], which uses an existing program called Edax to assess the performance of their Othello agent, there is no such computer program for Quixo that 
+I am aware of to evaluate against. Evaluation was instead carried out with a round-robin style tournament using the TD networks with and without an
+MCTS wrapper. Three heuristic players were also implemented in the tournament (see [agents_quixo.py](lib/agents_quixo.py)), as a baseline for the trained agents to compare against.  
 
+- RandomAgent (Selects a random move, every move)
+- GreedyWinAgent (Selects a random move, unless an immediate win for itself is available. If it is, select this move)
+- WinBlockAgent (Selects a random move, unless an immediate win is available for either player. If it is, select move to win or to block opponent winning)
+
+There are a total of 11 players (4 TD Network Agents, 4 TD + MCTS Wrapper Agents, RandomAgent, GreedyWinAgent, WinBlockAgent) and each pair plays 15 games against each other.
+The MCTS Wrapper uses 100 simulations for each move. 
+
+The implementation of the MCTS Wrapper shows encouraging results, as the Agents that include this have favourable win rates
+over the standalone TD Network Agents. The TD and TD + MCTS Agents all perform against the random heuristic players, which
+is a minimum baseline expected. There is no performance increase from further training however, with later model checkpoints
+declining in performance against the earlier models. This is a discouraging result and means the RL algorithm is likely either
+collapsing or the number of episodes is insufficient and the checkpoints are too close together, meaning results are noisy. 
+
+Note that no draws were seen in any of the results. 
+
+![Evaluation Win Rates](assets/evaluation_win_rates.png)
+
+The [human_v_model_quixo_app.py](human_v_model_quixo_app.py) script allows a human user to play versus the trained agents (either TD alone or 
+TD + MCTS). 
+
+![Quixo Game vs Agent](assets/quixo_play_example.gif)
+
+## Next Steps
+
+- Investigate widening use of numba to speed up TD network training and MCTS simulations 
+- Investigate parallel training so different parameters can be used and evaluated in a quick fashion 
+- Consider different RL algorithms to train the network, including DQN, and investigate potential model collapse. 
 
 ## References
 
