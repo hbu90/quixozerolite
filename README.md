@@ -182,7 +182,7 @@ MCTS wrapper. Three heuristic players were also implemented in the tournament (s
 - GreedyWinAgent (Selects a random move, unless an immediate win for itself is available. If it is, select this move)
 - WinBlockAgent (Selects a random move, unless an immediate win is available for either player. If it is, select move to win or to block opponent winning)
 
-There are a total of 11 players (4 TD Network Agents, 4 TD + MCTS Wrapper Agents, RandomAgent, GreedyWinAgent, WinBlockAgent) and each pair plays 15 games against each other.
+There are a total of 11 players (4 TD Network Agents, 4 TD + MCTS Wrapper Agents, RandomAgent, GreedyWinAgent, WinBlockAgent) and each pair plays 100 games against each other.
 The MCTS Wrapper uses 100 simulations for each move. 
 
 The implementation of the MCTS Wrapper shows encouraging results, as the Agents that include this have favourable win rates

@@ -1,0 +1,13 @@
+{
+    "td_agent_step_3000": 971.3491543743891,
+    "WinBlockPlayer": 729.7980152867075,
+    "td_agent_step_4000": 948.9988909202057,
+    "mcts_wrapper_td_agent_step_4000": 1100.012847992014,
+    "mcts_wrapper_td_agent_step_2000": 1227.0475733785634,
+    "mcts_wrapper_td_agent_step_3000": 1223.0756798127363,
+    "td_agent_step_2000": 1097.8805293567423,
+    "td_agent_step_1000": 1075.959553842249,
+    "mcts_wrapper_td_agent_step_1000": 1273.4122569542874,
+    "RandomPlayer": 509.87174670491703,
+    "GreedyWinPlayer": 842.5937513771894
+}

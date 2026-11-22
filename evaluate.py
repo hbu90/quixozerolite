@@ -15,7 +15,7 @@ MODEL_PATH = f"saves/{MODEL_FOLDER}"
 
 from collections import Counter
 
-RESULTS_PATH = f"tournament_results_{MODEL_FOLDER}.csv"
+RESULTS_PATH = f"assets/tournament_results_{MODEL_FOLDER}.csv"
 
 
 def load_results() -> list[tuple[str, str, float]]:
@@ -336,15 +336,15 @@ if __name__ == "__main__":
     model_paths = [str(p) for p in Path(MODEL_PATH).glob("*.npz")]
     tournament_results, win_rate_results = tournament(
         player_model_paths=model_paths,
-        games_per_pair=15,
+        games_per_pair=100,
     )
 
-    with open(f"win_rates_{MODEL_FOLDER}.json", "w") as f:
+    with open(f"assets/win_rates_{MODEL_FOLDER}.json", "w") as f:
         json.dump(win_rate_results, f, indent=4)
 
     offline_elo_ratings = offline_elo(tournament_results, n_shuffles=20, k=32)
 
-    with open(f"elo_ratings_{MODEL_FOLDER}.json", "w") as f:
+    with open(f"assets/elo_ratings_{MODEL_FOLDER}.json", "w") as f:
         json.dump(offline_elo_ratings, f, indent=4)
 
     for n, r in sorted(offline_elo_ratings.items(), key=lambda x: x[1], reverse=True):
