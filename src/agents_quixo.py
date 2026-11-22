@@ -2,7 +2,7 @@ import random
 from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
-from lib import game_quixo
+from src import game_quixo
 from scipy.special import softmax
 
 TD_AGENT_TEMPERATURE = 0.2

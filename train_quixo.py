@@ -4,7 +4,7 @@ import numpy as np
 import argparse
 from tqdm import tqdm
 
-from lib import model_quixo
+from src import model_quixo
 
 
 MAX_STEPS = 4_000

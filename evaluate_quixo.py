@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-import lib.model_quixo as model_quixo
-import lib.agents_quixo as agents_quixo
-import lib.mcts_quixo as mcts_quixo
+import src.model_quixo as model_quixo
+import src.agents_quixo as agents_quixo
+import src.mcts_quixo as mcts_quixo
 import os
 import json
 import random

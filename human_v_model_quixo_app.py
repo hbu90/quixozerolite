@@ -7,8 +7,8 @@ from typing import Any
 import numpy as np
 import streamlit as st
 
-from lib import agents_quixo, game_quixo, model_quixo
-from lib.mcts_quixo import MCTS
+from src import agents_quixo, game_quixo, model_quixo
+from src.mcts_quixo import MCTS
 
 
 # ---------------------------------------------------------------------------

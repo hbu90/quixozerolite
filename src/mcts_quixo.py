@@ -2,8 +2,8 @@ import math as m
 from typing import Any
 
 import numpy as np
-import lib.game_quixo as game_quixo
-import lib.model_quixo as model_quixo
+import src.game_quixo as game_quixo
+import src.model_quixo as model_quixo
 from scipy.special import softmax
 
 class MCTS:

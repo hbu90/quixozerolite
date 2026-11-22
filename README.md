@@ -176,7 +176,7 @@ the network are in the table below. The TD network was saved every 1,000 steps.
 
 Unlike in [4], which uses an existing program called Edax to assess the performance of their Othello agent, there is no such computer program for Quixo that 
 I am aware of to evaluate against. Evaluation was instead carried out with a round-robin style tournament using the TD networks with and without an
-MCTS wrapper. Three heuristic players were also implemented in the tournament (see [agents_quixo.py](lib/agents_quixo.py)), as a baseline for the trained agents to compare against.  
+MCTS wrapper. Three heuristic players were also implemented in the tournament (see [agents_quixo.py](src/agents_quixo.py)), as a baseline for the trained agents to compare against.  
 
 - RandomAgent (Selects a random move, every move)
 - GreedyWinAgent (Selects a random move, unless an immediate win for itself is available. If it is, select this move)
