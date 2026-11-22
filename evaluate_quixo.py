@@ -8,13 +8,11 @@ import random
 import numpy as np
 from pathlib import Path
 import csv
+from collections import Counter
 
 TOURNAMENT_MCTS_SIMULATION_SIZE = 100
 MODEL_FOLDER = "20261008"
 MODEL_PATH = f"saves/{MODEL_FOLDER}"
-
-from collections import Counter
-
 RESULTS_PATH = f"assets/tournament_results_{MODEL_FOLDER}.csv"
 
 
@@ -36,6 +34,7 @@ def win_rates_from_games(games: list[tuple[str, str, float]]) -> dict[str, float
         played[(a, b)] += 1
         wins[(a, b)] += r == 1
     return {f"{a}_vs_{b}": wins[(a, b)] / n * 100 for (a, b), n in played.items()}
+
 
 @dataclass
 class TournamentPlayer:
@@ -98,7 +97,7 @@ def play_matches(
     player_a_name: str,
     player_b_name: str,
     games: int,
-) ->tuple[list[tuple[str, str, float]], float]:
+) -> tuple[list[tuple[str, str, float]], float]:
     """
     Play a series of games between two agents. Agents alternate which player moves first between games. MCTS trees are
     cleared before each game to prevent information carrying between games.
@@ -161,22 +160,16 @@ def tournament(
     for path in player_model_paths:
         basename = os.path.basename(path)
         net = load_model(path)
-        td_agent = agents_quixo.TDAgent(
-            net
-        )
+        td_agent = agents_quixo.TDAgent(net)
         td_name = f"{os.path.splitext(basename)[0]}"
-        players.append(
-            TournamentPlayer(name=td_name, agent=td_agent)
-        )
+        players.append(TournamentPlayer(name=td_name, agent=td_agent))
         mcts_agent = agents_quixo.MCTSAgent(
             net,
             mcts_quixo.MCTS(),
             TOURNAMENT_MCTS_SIMULATION_SIZE,
         )
         mcts_name = f"mcts_wrapper_{os.path.splitext(basename)[0]}"
-        players.append(
-            TournamentPlayer(name=mcts_name, agent=mcts_agent)
-        )
+        players.append(TournamentPlayer(name=mcts_name, agent=mcts_agent))
 
     random_player = agents_quixo.RandomAgent()
     greedy_win_player = agents_quixo.GreedyWinAgent()

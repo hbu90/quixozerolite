@@ -7,6 +7,7 @@ from scipy.special import softmax
 
 TD_AGENT_TEMPERATURE = 0.2
 
+
 @dataclass
 class RandomAgent:
     name: str = "random"
@@ -76,7 +77,9 @@ class TDAgent:
         self.net = net
         self.name = "td_net"
 
-    def select_action(self,  state: NDArray[np.int8], cur_player: int) -> tuple[int, np.ndarray]:
+    def select_action(
+        self, state: NDArray[np.int8], cur_player: int
+    ) -> tuple[int, np.ndarray]:
         legal_moves = game_quixo.possible_moves(state, cur_player)
         mask = np.zeros(game_quixo.N_ACTIONS)
         probs = np.zeros(game_quixo.N_ACTIONS)
@@ -95,10 +98,11 @@ class TDAgent:
         if probs.sum() == 0:
             action = int(np.random.choice(legal_moves))
         else:
-            probs = softmax(probs/TD_AGENT_TEMPERATURE)
+            probs = softmax(probs / TD_AGENT_TEMPERATURE)
             action = int(np.random.choice(game_quixo.N_ACTIONS, p=probs))
 
         return action
+
 
 class MCTSAgent:
     def __init__(self, net, mcts, n_sims):

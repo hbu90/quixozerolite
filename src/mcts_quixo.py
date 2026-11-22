@@ -6,6 +6,7 @@ import src.game_quixo as game_quixo
 import src.model_quixo as model_quixo
 from scipy.special import softmax
 
+
 class MCTS:
     """
     Monte-Carlo Tree Search class that keeps statistics for every state encountered during the search.
@@ -74,7 +75,7 @@ class MCTS:
                 terminal = True
                 break
             visited.add(key)
-            
+
             states_tracked.append(cur_state)
             players_tracked.append(cur_player)
             counts = self.visit_count[key]
@@ -129,7 +130,7 @@ class MCTS:
             states_tracked,
             actions_tracked,
             players_tracked,
-            terminal
+            terminal,
         )
 
     def run_mcts(
@@ -158,7 +159,7 @@ class MCTS:
                 states_tracked,
                 actions_tracked,
                 players_tracked,
-                terminal
+                terminal,
             ) = self.find_leaf(state_int, cur_player)
 
             # Leaf expansion and evaluation
@@ -214,8 +215,6 @@ class MCTS:
                     self.value[key][action] / self.visit_count[key][action]
                 )
                 value = -value
-
-
 
     def get_policy_value(
         self, state_int: int, cur_player: int, tau: int = 1

@@ -33,8 +33,10 @@ C_CHANGED = "#e0b94f"
 ARROWS = {"UP": "↑", "DOWN": "↓", "LEFT": "←", "RIGHT": "→"}
 
 # Agent pacing (seconds)
-AGENT_START_DELAY = 0.5      # pause after your move before the agent starts thinking
-AGENT_PREVIEW_SECONDS = 1.2  # how long the agent's chosen move is shown before it is played
+AGENT_START_DELAY = 0.5  # pause after your move before the agent starts thinking
+AGENT_PREVIEW_SECONDS = (
+    1.2  # how long the agent's chosen move is shown before it is played
+)
 
 st.set_page_config(
     page_title="Quixo Arena",
@@ -218,7 +220,9 @@ def legal_by_source(player: int) -> dict[int, dict[str, int]]:
     return cache[key]
 
 
-def agent_choose_action(agent: Any, state: np.ndarray, player: int, agent_type: str) -> int:
+def agent_choose_action(
+    agent: Any, state: np.ndarray, player: int, agent_type: str
+) -> int:
     if agent_type == "MCTS Agent":
         result = agent.select_action(state, player, tau=0)
     else:
@@ -317,7 +321,9 @@ def render_board() -> None:
             cols = st.columns(SIZE, gap="small")
             for c in range(SIZE):
                 v = int(state[r, c])
-                bg, fg = {1: (C_X, C_X_TEXT), -1: (C_O, C_O_TEXT)}.get(v, (C_BLANK, C_TEXT))
+                bg, fg = {1: (C_X, C_X_TEXT), -1: (C_O, C_O_TEXT)}.get(
+                    v, (C_BLANK, C_TEXT)
+                )
                 label = {1: "X", -1: "O"}.get(v, "\u00a0")
                 border = "2px solid rgba(46,59,67,.12)"
                 shadow = f"0 0 0 3px {C_CHANGED}" if r * SIZE + c in changed else "none"
@@ -325,7 +331,7 @@ def render_board() -> None:
                 on_click, args, disabled = None, (), True
                 if (r, c) == selected_cell:
                     border = f"3px solid {C_SAGE_DARK}"
-                    shadow = f"0 0 0 4px rgba(95,143,118,.35)"
+                    shadow = "0 0 0 4px rgba(95,143,118,.35)"
                     on_click, args, disabled = on_pick_source, (selected,), False
                 elif (r, c) in dest_cells:
                     direction, action = dest_cells[(r, c)]
@@ -335,7 +341,11 @@ def render_board() -> None:
                     on_click, args, disabled = on_pick_destination, (action,), False
                 elif (r, c) in src_cells:
                     border = f"3px solid {C_SAGE}"
-                    on_click, args, disabled = on_pick_source, (src_cells[(r, c)],), False
+                    on_click, args, disabled = (
+                        on_pick_source,
+                        (src_cells[(r, c)],),
+                        False,
+                    )
 
                 key = f"cell_{r}_{c}"
                 css.append(
@@ -359,7 +369,9 @@ def render_board() -> None:
 
     if human_turn:
         if selected is None:
-            st.caption("Green-outlined tiles can be picked up. Click one to see where it can go.")
+            st.caption(
+                "Green-outlined tiles can be picked up. Click one to see where it can go."
+            )
         else:
             row, col = game_quixo.BORDER_PIECES[selected]
             st.caption(
@@ -551,7 +563,9 @@ def game_screen() -> None:
         elif current_player == human_player:
             st.info(f"Your turn — play as {player_name(human_player)}.")
         else:
-            st.info(f"{agent_type} is choosing a move as {player_name(current_player)}.")
+            st.info(
+                f"{agent_type} is choosing a move as {player_name(current_player)}."
+            )
 
         st.markdown("**Last move**")
         st.markdown(st.session_state.last_move_text)
